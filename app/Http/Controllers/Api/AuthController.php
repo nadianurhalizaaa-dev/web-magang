@@ -7,38 +7,27 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class AuthController extends Controller
 {
-    /**
-     * Register a new user via API (React Frontend).
-     *
-     * @param Request $request
-     * @return JsonResponse
-     */
     public function register(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:6',
-            'role' => 'nullable|string|in:admin,peserta,user',
+        $validated = $request->validate([
+            'nama' => 'required_without:name|string|max:255',
+            'name' => 'required_without:nama|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users,email',
+            'password' => 'required|string|min:8',
+            'role' => ['sometimes', Rule::in(['Pemagang', 'pemagang', 'peserta'])],
+            'no_hp' => 'nullable|string|max:255',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Validasi pendaftaran gagal',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
         $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'role' => 'user',
+            'name' => $validated['nama'] ?? $validated['name'],
+            'email' => $validated['email'],
+            'password' => Hash::make($validated['password']),
+            'role' => 'peserta',
+            'no_hp' => $validated['no_hp'] ?? null,
         ]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -47,84 +36,114 @@ class AuthController extends Controller
             'status' => 'success',
             'message' => 'Registrasi akun berhasil',
             'data' => [
-                'user' => $user,
+                'user' => $this->presentUser($user),
                 'access_token' => $token,
-                'token_type' => 'Bearer'
-            ]
+                'token_type' => 'Bearer',
+            ],
         ], 201);
     }
 
-    /**
-     * Login user via API and issue Sanctum token.
-     *
-     * @param Request $request
-     * @return JsonResponse
-     */
+    public function createPembimbing(Request $request): JsonResponse
+    {
+        if (strtolower((string) $request->user()?->role) !== 'admin') {
+            return response()->json([
+                'message' => 'Hanya Admin yang dapat menambahkan Pembimbing.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'nama' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users,email',
+            'password' => 'required|string|min:8',
+            'no_hp' => 'nullable|string|max:255',
+        ]);
+
+        $user = User::create([
+            'name' => $validated['nama'],
+            'email' => $validated['email'],
+            'password' => Hash::make($validated['password']),
+            'role' => 'pembimbing',
+            'no_hp' => $validated['no_hp'] ?? null,
+        ]);
+
+        return response()->json([
+            'data' => $this->presentUser($user),
+            'message' => 'Akun Pembimbing berhasil dibuat.',
+        ], 201);
+    }
+
     public function login(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
+        $validated = $request->validate([
             'email' => 'required|email',
             'password' => 'required|string',
         ]);
 
-        if ($validator->fails()) {
+        $user = User::where('email', $validated['email'])->first();
+
+        if (!$user || !Hash::check($validated['password'], $user->password)) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Validasi login gagal',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        $user = User::where('email', $request->email)->first();
-
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Email atau password salah'
+                'message' => 'Email atau password salah',
             ], 401);
         }
 
-        // Revoke old tokens optionally & issue new token
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
             'status' => 'success',
             'message' => 'Login berhasil',
             'data' => [
-                'user' => $user,
+                'user' => $this->presentUser($user),
                 'access_token' => $token,
-                'token_type' => 'Bearer'
-            ]
-        ], 200);
+                'token_type' => 'Bearer',
+            ],
+        ]);
     }
 
-    /**
-     * Logout user and revoke token.
-     *
-     * @param Request $request
-     * @return JsonResponse
-     */
     public function logout(Request $request): JsonResponse
     {
         $request->user()->currentAccessToken()->delete();
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Berhasil logout'
-        ], 200);
+            'message' => 'Berhasil logout',
+        ]);
     }
 
-    /**
-     * Get current authenticated user profile.
-     *
-     * @param Request $request
-     * @return JsonResponse
-     */
     public function me(Request $request): JsonResponse
     {
         return response()->json([
             'status' => 'success',
-            'data' => $request->user()
-        ], 200);
+            'data' => $this->presentUser($request->user()),
+        ]);
+    }
+
+    public function getPembimbing(Request $request): JsonResponse
+    {
+        if (strtolower((string) $request->user()?->role) !== 'admin') {
+            return response()->json([
+                'message' => 'Hanya Admin yang dapat melihat daftar Pembimbing.',
+            ], 403);
+        }
+
+        $pembimbings = User::where('role', 'pembimbing')->get();
+
+        return response()->json([
+            'data' => $pembimbings->map(fn (User $user) => $this->presentUser($user)),
+        ]);
+    }
+
+    private function presentUser(User $user): array
+    {
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'nama' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
+            'no_hp' => $user->no_hp,
+            'foto' => $user->foto,
+        ];
     }
 }
