@@ -11,6 +11,18 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('users')) {
+            return;
+        }
+
+        $hasRole = Schema::hasColumn('users', 'role');
+        $hasPhone = Schema::hasColumn('users', 'no_hp');
+        $hasPhoto = Schema::hasColumn('users', 'foto');
+
+        if ($hasRole && $hasPhone && $hasPhoto) {
+            return;
+        }
+
         Schema::table('users', function (Blueprint $table) {
             if (!Schema::hasColumn('users', 'role')) {
                 $table->enum('role', ['admin', 'pembimbing', 'peserta'])
@@ -33,8 +45,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn(['role', 'no_hp', 'foto']);
-        });
+        // Some fields may already exist before this migration runs. Keeping
+        // them avoids deleting account data or breaking related features.
     }
 };

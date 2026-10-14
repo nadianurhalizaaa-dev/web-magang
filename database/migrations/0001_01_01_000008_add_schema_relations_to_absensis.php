@@ -8,19 +8,30 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('pembimbings', function (Blueprint $table) {
-            $table->id();
-            $table->string('nama', 100);
-            $table->string('email', 100)->unique();
-            $table->string('no_hp', 20)->nullable();
-            $table->string('bidang', 100)->nullable();
-            $table->timestamps();
-        });
+        if (! Schema::hasTable('pembimbings')) {
+            Schema::create('pembimbings', function (Blueprint $table) {
+                $table->id();
+                $table->string('nama', 100);
+                $table->string('email', 100)->unique();
+                $table->string('no_hp', 20)->nullable();
+                $table->string('bidang', 100)->nullable();
+                $table->timestamps();
+            });
+        }
 
-        Schema::table('absensis', function (Blueprint $table) {
-            $table->foreignId('user_id')->nullable()->after('id')->constrained('users')->nullOnDelete();
-            $table->foreignId('pembimbing_id')->nullable()->after('user_id')->constrained('pembimbings')->nullOnDelete();
-        });
+        if (Schema::hasTable('absensis')) {
+            if (! Schema::hasColumn('absensis', 'user_id')) {
+                Schema::table('absensis', function (Blueprint $table) {
+                    $table->foreignId('user_id')->nullable()->after('id')->constrained('users')->nullOnDelete();
+                });
+            }
+
+            if (! Schema::hasColumn('absensis', 'pembimbing_id')) {
+                Schema::table('absensis', function (Blueprint $table) {
+                    $table->foreignId('pembimbing_id')->nullable()->after('user_id')->constrained('pembimbings')->nullOnDelete();
+                });
+            }
+        }
     }
 
     public function down(): void

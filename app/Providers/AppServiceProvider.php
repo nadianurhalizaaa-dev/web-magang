@@ -19,8 +19,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $router = $this->app['router'];
-        $router->aliasMiddleware('role', \App\Http\Middleware\CheckRole::class);
-        $router->aliasMiddleware('active.internship', \App\Http\Middleware\RequireActiveInternship::class);
+        //
     }
 }
