@@ -138,8 +138,8 @@ class AuthController extends Controller
     {
         return [
             'id' => $user->id,
-            'name' => $user->name,
-            'nama' => $user->name,
+            'name' => $user->name ?? $user->nama,
+            'nama' => $user->name ?? $user->nama,
             'email' => $user->email,
             'role' => $user->role,
             'no_hp' => $user->no_hp,

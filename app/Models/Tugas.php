@@ -14,6 +14,7 @@ class Tugas extends Model
     protected $fillable = [
         'judul',
         'deskripsi',
+        'kategori',
         'deadline',
         'created_by',
     ];
@@ -28,6 +29,11 @@ class Tugas extends Model
     }
 
     public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function pembuat()
     {
         return $this->belongsTo(User::class, 'created_by');
     }

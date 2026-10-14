@@ -13,15 +13,8 @@ class CreateUsersTable extends Migration
      */
     public function up()
     {
-        Schema::create('users', function (Blueprint $table) {
-            $table->id();
-            $table->string('nama');
-            $table->string('email')->unique();
-            $table->string('password');
-            $table->string('role')->default('admin');
-            $table->rememberToken();
-            $table->timestamps();
-        });
+        // This legacy migration is retained for databases that already record it.
+        // The canonical users table is created by 0001_01_01_000001_create_users_table.
     }
 
     /**
@@ -31,6 +24,6 @@ class CreateUsersTable extends Migration
      */
     public function down()
     {
-        Schema::dropIfExists('users');
+        // Do not drop the canonical users table during rollback.
     }
 }

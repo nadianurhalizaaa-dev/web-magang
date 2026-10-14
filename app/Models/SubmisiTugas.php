@@ -34,6 +34,11 @@ class SubmisiTugas extends Model
         return $this->belongsTo(Tugas::class, 'tugas_id');
     }
 
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
     public function peserta()
     {
         return $this->belongsTo(User::class, 'user_id');

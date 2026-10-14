@@ -20,7 +20,7 @@ return new class extends Migration
                 'email_verified_at' => $user->email_verified_at,
                 'password' => $user->password,
                 'remember_token' => $user->remember_token,
-                'role' => in_array($user->role, ['pembimbing', 'peserta'], true)
+                'role' => in_array($user->role, ['admin', 'pembimbing', 'peserta'], true)
                     ? $user->role
                     : 'peserta',
                 'no_hp' => $user->no_hp,
@@ -39,7 +39,7 @@ return new class extends Migration
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->rememberToken();
-            $table->enum('role', ['pembimbing', 'peserta'])->default('peserta');
+            $table->enum('role', ['admin', 'pembimbing', 'peserta'])->default('peserta');
             $table->string('no_hp')->nullable();
             $table->string('foto')->nullable();
             $table->timestamps();
@@ -64,7 +64,7 @@ return new class extends Migration
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->rememberToken();
-            $table->enum('role', ['pembimbing', 'peserta'])->default('peserta');
+            $table->enum('role', ['admin', 'pembimbing', 'peserta'])->default('peserta');
             $table->string('no_hp')->nullable();
             $table->string('foto')->nullable();
             $table->timestamps();

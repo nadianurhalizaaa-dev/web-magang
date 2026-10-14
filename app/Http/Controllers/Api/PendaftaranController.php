@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Pendaftaran;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class PendaftaranController extends Controller
 {
@@ -63,8 +63,11 @@ class PendaftaranController extends Controller
     public function update(Request $request, $id)
     {
         $request->validate([
-            'status' => 'required|string',
-            'pembimbing_id' => 'nullable|exists:users,id',
+            'status' => 'required|string|in:Calon Pemagang,Pemagang Aktif,Ditolak,Alumni',
+            'pembimbing_id' => [
+                'nullable',
+                Rule::exists('users', 'id')->where(fn ($query) => $query->where('role', 'pembimbing')),
+            ],
             'tanggal_selesai' => 'nullable|date',
             'file_surat_balasan' => 'nullable|file|mimes:pdf|max:2048',
         ]);
