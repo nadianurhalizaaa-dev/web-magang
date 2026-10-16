@@ -11,7 +11,7 @@ class MagangController extends Controller
     public function index(): JsonResponse
     {
         return response()->json(
-            Magang::orderBy('participant_name')->get()
+            Magang::with('pembimbing')->orderBy('participant_name')->get()
         );
     }
 

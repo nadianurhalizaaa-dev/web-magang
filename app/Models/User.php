@@ -29,9 +29,21 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'pembimbing_id',
+        'magang_id',
         'no_hp',
         'foto',
     ];
+
+    public function pembimbing()
+    {
+        return $this->belongsTo(Pembimbing::class, 'pembimbing_id');
+    }
+
+    public function magang()
+    {
+        return $this->belongsTo(Magang::class);
+    }
 
     /**
      * The attributes that should be hidden for serialization.

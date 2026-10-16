@@ -75,17 +75,35 @@ class AuthController extends Controller
     public function login(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'email' => 'required|email',
+            'email' => 'required|string|max:255',
             'password' => 'required|string',
         ]);
 
-        $user = User::where('email', $validated['email'])->first();
+        $identifier = $validated['email'];
+        if (filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
+            $user = User::with('magang')->where('email', $identifier)->first();
+        } else {
+            $user = User::with('magang')
+                ->whereHas('magang', function ($query) use ($identifier) {
+                    $query->where('participant_code', $identifier)
+                        ->where('status', 'Aktif');
+                })
+                ->first();
+        }
 
-        if (!$user || !Hash::check($validated['password'], $user->password)) {
+        if (! $user || ! Hash::check($validated['password'], $user->password)) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Email atau password salah',
+                'message' => 'Email/NPM atau password salah',
             ], 401);
+        }
+
+        if (in_array($user->role, ['peserta', 'user'], true)
+            && (! $user->magang || $user->magang->status !== 'Aktif')) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Akun peserta bersama tidak dapat digunakan. Keluar, lalu masuk memakai NPM dan password akun pribadi.',
+            ], 403);
         }
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -115,7 +133,7 @@ class AuthController extends Controller
     {
         return response()->json([
             'status' => 'success',
-            'data' => $this->presentUser($request->user()),
+            'data' => $this->presentUser($request->user()->load('magang')),
         ]);
     }
 
@@ -144,6 +162,7 @@ class AuthController extends Controller
             'role' => $user->role,
             'no_hp' => $user->no_hp,
             'foto' => $user->foto,
+            'magang' => $user->relationLoaded('magang') ? $user->magang : null,
         ];
     }
 }
