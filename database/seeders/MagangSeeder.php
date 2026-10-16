@@ -20,13 +20,13 @@ class MagangSeeder extends Seeder
                 'status' => 'Aktif',
             ],
             [
-                'participant_code' => '23013008',
+                'participant_code' => '231013008',
                 'participant_name' => 'Nadia Nurhaliza',
                 'institution' => 'Sekolah Tinggi Teknologi Payakumbuh',
                 'status' => 'Aktif',
             ],
             [
-                'participant_code' => '201013021',
+                'participant_code' => '231013021',
                 'participant_name' => 'Widya Anjelina',
                 'institution' => 'Sekolah Tinggi Teknologi Payakumbuh',
                 'status' => 'Aktif',
