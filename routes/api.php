@@ -1,45 +1,19 @@
 <?php
 
 use App\Http\Controllers\AbsensiController;
-use App\Http\Controllers\Api\AktivitasController as ApiAktivitasController;
 use App\Http\Controllers\Api\AuthController as ApiAuthController;
-use App\Http\Controllers\Api\BerandaController as ApiBerandaController;
-use App\Http\Controllers\Api\LaporanMagangController;
-use App\Http\Controllers\Api\ParticipantAccountController;
-use App\Http\Controllers\Api\PendaftaranController;
-use App\Http\Controllers\Api\PenilaianController;
-use App\Http\Controllers\Api\PeriodeController;
-use App\Http\Controllers\Api\TugasController;
 use App\Http\Controllers\MagangController;
 use App\Http\Controllers\PembimbingController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-
-Route::get('/', function () {
-    return response()->json([
-        'status' => 'online',
-        'message' => 'Backend REST API Portal Magang is running',
-        'version' => '1.0.0',
-    ]);
-});
+use App\Http\Controllers\Api\PeriodeController;
+use App\Http\Controllers\Api\PendaftaranController;
+use App\Http\Controllers\Api\TugasController;
+use App\Http\Controllers\Api\LaporanMagangController;
+use App\Http\Controllers\Api\PenilaianController;
 
 Route::post('/register', [ApiAuthController::class, 'register']);
 Route::post('/login', [ApiAuthController::class, 'login']);
-
-Route::get('/beranda', [ApiBerandaController::class, 'index']);
-Route::get('/beranda/profil', [ApiBerandaController::class, 'getProfil']);
-Route::get('/beranda/alumni', [ApiBerandaController::class, 'getAlumni']);
-Route::get('/komentar', [ApiBerandaController::class, 'getKomentar']);
-Route::post('/komentar', [ApiBerandaController::class, 'storeKomentar']);
-
-Route::get('/aktivitas', [ApiAktivitasController::class, 'index']);
-Route::get('/aktivitas/{id}', [ApiAktivitasController::class, 'show']);
-Route::post('/aktivitas/{id}/komentar', [ApiAktivitasController::class, 'storeKomentar'])->middleware('auth:sanctum');
-Route::post('/aktivitas', [ApiAktivitasController::class, 'store'])->middleware('auth:sanctum');
-
-Route::get('/test', function () {
-    return response()->json(['message' => 'Halo dari Laravel API!']);
-});
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [ApiAuthController::class, 'logout']);
@@ -51,8 +25,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:admin')->group(function () {
         Route::get('/admin/pembimbing', [ApiAuthController::class, 'getPembimbing']);
         Route::post('/admin/pembimbing', [ApiAuthController::class, 'createPembimbing']);
-        Route::get('/users/peserta', [ParticipantAccountController::class, 'index']);
-        Route::put('/users/{user}/peserta', [ParticipantAccountController::class, 'update']);
     });
 
     Route::get('/periode', [PeriodeController::class, 'index']);
@@ -72,12 +44,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/pendaftaran/cancel', [PendaftaranController::class, 'cancelRegistration']);
     });
 
+    // The legacy attendance UI uses participant codes. Read and edit operations
+    // are restricted to staff; participant attendance routes require an active
+    // internship account. The current schema still needs an explicit account-to-
+    // participant-code link to enforce ownership of that code.
     Route::middleware('role:admin,pembimbing')->group(function () {
         Route::get('/absensi', [AbsensiController::class, 'index']);
         Route::put('/absensi/{id}', [AbsensiController::class, 'update']);
-        Route::post('/absensi/{id}/review-izin', [AbsensiController::class, 'reviewLeave']);
     });
-
     Route::middleware(['role:admin,pembimbing,peserta', 'active.internship'])->group(function () {
         Route::get('/magang', [MagangController::class, 'index']);
         Route::get('/absensi/hari-ini', [AbsensiController::class, 'today']);
@@ -90,12 +64,18 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware('role:admin')->group(function () {
         Route::post('/magang', [MagangController::class, 'store']);
+    });
+
+    Route::middleware('role:admin')->group(function () {
         Route::apiResource('/pembimbing', PembimbingController::class);
-        Route::post('/absensi', [AbsensiController::class, 'store']);
-        Route::delete('/absensi/{id}', [AbsensiController::class, 'destroy']);
     });
 });
 
+Route::get('/test', function () {
+    return response()->json(['message' => 'Halo dari Laravel API!']);
+});
+
+// Endpoint laporan dan penilaian yang dipakai oleh fitur Laporan Magang React.
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::middleware('role:admin,pembimbing,peserta')->group(function () {
         Route::get('/laporan-magang', [LaporanMagangController::class, 'index']);
@@ -116,7 +96,10 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     });
 });
 
+// Tugas & submisi hanya dapat diakses dengan sesi login yang valid.
 Route::middleware('auth:sanctum')->group(function () {
+    // Semua akun dengan role ini boleh melihat tugas. Status Pemagang Aktif
+    // tetap diwajibkan untuk mengumpulkan tugas di bawah.
     Route::middleware('role:admin,pembimbing,peserta')->group(function () {
         Route::get('/tugas', [TugasController::class, 'index']);
         Route::get('/tugas/{id}', [TugasController::class, 'show']);
