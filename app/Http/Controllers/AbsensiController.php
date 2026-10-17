@@ -3,7 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Absensi;
+<<<<<<< HEAD
 use App\Models\Pendaftaran;
+=======
+use App\Models\Magang;
+>>>>>>> origin/main
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -12,13 +16,20 @@ class AbsensiController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        if (! in_array($request->user()?->role, ['admin', 'pembimbing'], true)) {
+            return response()->json([
+                'message' => 'Anda tidak memiliki izin untuk melihat seluruh data absensi.',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'participant_code' => ['nullable', 'string', 'max:30'],
             'tanggal' => ['nullable', 'date'],
         ]);
 
-        $query = Absensi::query();
+        $query = Absensi::with(['pembimbing', 'user']);
 
+<<<<<<< HEAD
         if (strtolower((string) $request->user()?->role) === 'pembimbing') {
             $assignedUserIds = Pendaftaran::query()
                 ->where('pembimbing_id', $request->user()->id)
@@ -28,22 +39,26 @@ class AbsensiController extends Controller
         }
 
         if (!empty($validated['participant_code'])) {
+=======
+        if (! empty($validated['participant_code'])) {
+>>>>>>> origin/main
             $query->where('participant_code', $validated['participant_code']);
         }
 
-        if (!empty($validated['tanggal'])) {
+        if (! empty($validated['tanggal'])) {
             $query->whereDate('tanggal', $validated['tanggal']);
         }
 
         return response()->json(
             $query->latest('tanggal')
-                  ->latest('id')
-                  ->get()
+                ->latest('id')
+                ->get()
         );
     }
 
     public function today(Request $request): JsonResponse
     {
+<<<<<<< HEAD
         $user = $request->user();
 
         if ($user?->role === 'peserta') {
@@ -58,6 +73,16 @@ class AbsensiController extends Controller
                 ->whereDate('tanggal', today())
                 ->first();
         }
+=======
+        $profile = $this->participantProfile($request);
+        if ($profile instanceof JsonResponse) {
+            return $profile;
+        }
+
+        $attendance = Absensi::where('participant_code', $profile->participant_code)
+            ->whereDate('tanggal', today())
+            ->first();
+>>>>>>> origin/main
 
         return response()->json($attendance);
     }
@@ -66,13 +91,22 @@ class AbsensiController extends Controller
     {
         $user = $request->user();
 
-        if (! $user) {
+        if (! $user || ! in_array($user->role, ['peserta', 'user'], true)) {
             return response()->json([
-                'message' => 'Unauthorized',
-            ], 401);
+                'message' => 'Hanya akun peserta yang dapat melihat riwayat pribadinya.',
+            ], 403);
         }
 
+<<<<<<< HEAD
         $attendance = Absensi::where('user_id', $user->id)
+=======
+        $profile = $this->participantProfile($request);
+        if ($profile instanceof JsonResponse) {
+            return $profile;
+        }
+
+        $attendance = Absensi::where('participant_code', $profile->participant_code)
+>>>>>>> origin/main
             ->orderByDesc('tanggal')
             ->get();
 
@@ -83,11 +117,16 @@ class AbsensiController extends Controller
     {
         $user = $request->user();
         $validated = $request->validate([
+<<<<<<< HEAD
             'status' => ['nullable', 'in:Hadir,Izin,Sakit,Alpa'],
+=======
+            'status' => ['nullable', 'in:Hadir,Tidak Hadir,Izin,Sakit,Alpa'],
+>>>>>>> origin/main
             'keterangan' => ['nullable', 'string', 'max:255'],
             'foto' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ]);
 
+<<<<<<< HEAD
         $registration = $user->pendaftarans()->where('status', 'Pemagang Aktif')->latest('id')->first();
         if (! $registration) {
             return response()->json(['message' => 'Akun ini belum memiliki pendaftaran magang aktif.'], 403);
@@ -108,35 +147,115 @@ class AbsensiController extends Controller
         $attendance = Absensi::firstOrCreate(
             [
                 'participant_code' => $participantCode,
+=======
+        $profile = $this->participantProfile($request);
+        if ($profile instanceof JsonResponse) {
+            return $profile;
+        }
+
+        $status = $validated['status'] ?? 'Hadir';
+        $isLeaveRequest = $status === 'Izin';
+        $isNotPresent = in_array($status, ['Tidak Hadir', 'Izin', 'Sakit', 'Alpa']);
+
+        $user = $request->user();
+        $pembimbingId = $profile->pembimbing_id ?? $user->pembimbing_id;
+
+        $photoPath = $request->file('foto')?->store('absensi', 'public');
+
+        $finalStatus = $isNotPresent ? ($status === 'Tidak Hadir' ? 'Tidak Hadir' : ($isLeaveRequest ? 'Tidak Hadir' : $status)) : 'Hadir';
+
+        $attendance = Absensi::firstOrCreate(
+            [
+                'participant_code' => $profile->participant_code,
+>>>>>>> origin/main
                 'tanggal' => today(),
             ],
             [
                 'user_id' => $user->id,
+<<<<<<< HEAD
                 'participant_name' => $participantName,
                 'institution' => $institution,
                 'jam_masuk' => now()->format('H:i:s'),
                 'status' => $status,
+=======
+                'magang_id' => $profile->id,
+                'pembimbing_id' => $pembimbingId,
+                'participant_name' => $profile->participant_name,
+                'institution' => $profile->institution,
+                'jam_masuk' => $isNotPresent ? null : now()->format('H:i:s'),
+                'status' => $finalStatus,
+                'approval_status' => $isLeaveRequest ? 'pending' : null,
+>>>>>>> origin/main
                 'keterangan' => $validated['keterangan'] ?? null,
                 'foto' => $photoPath,
             ]
         );
 
-        if (!$attendance->wasRecentlyCreated) {
-            Storage::disk('public')->delete($photoPath);
+        if (! $attendance->wasRecentlyCreated) {
+            if ($photoPath) {
+                Storage::disk('public')->delete($photoPath);
+            }
+
             return response()->json(['message' => 'Kamu sudah melakukan absensi masuk hari ini.', 'data' => $attendance], 422);
         }
 
-        return response()->json(['message' => 'Absensi masuk berhasil dicatat.', 'data' => $attendance], 201);
+        return response()->json([
+            'message' => $isLeaveRequest
+                ? 'Permohonan izin berhasil dikirim dan menunggu persetujuan pembimbing.'
+                : 'Absensi masuk berhasil dicatat.',
+            'data' => $attendance,
+        ], 201);
+    }
+
+    public function reviewLeave(Request $request, string $id): JsonResponse
+    {
+        if (! in_array($request->user()?->role, ['admin', 'pembimbing'], true)) {
+            return response()->json(['message' => 'Anda tidak memiliki izin untuk memproses permohonan izin.'], 403);
+        }
+
+        $validated = $request->validate([
+            'decision' => ['required', 'in:approved,rejected'],
+        ]);
+
+        $attendance = Absensi::findOrFail($id);
+
+        if ($attendance->approval_status !== 'pending') {
+            return response()->json([
+                'message' => 'Permohonan izin ini sudah diputuskan atau tidak menunggu persetujuan.',
+            ], 422);
+        }
+
+        $approved = $validated['decision'] === 'approved';
+        $attendance->update([
+            'status' => $approved ? 'Izin' : 'Alpa',
+            'approval_status' => $approved ? 'approved' : 'rejected',
+        ]);
+
+        return response()->json([
+            'message' => $approved
+                ? 'Permohonan izin disetujui.'
+                : 'Permohonan izin ditolak.',
+            'data' => $attendance,
+        ]);
     }
 
     public function checkOut(Request $request): JsonResponse
     {
+<<<<<<< HEAD
         $user = $request->user();
         $attendance = Absensi::where('user_id', $user->id)
+=======
+        $profile = $this->participantProfile($request);
+        if ($profile instanceof JsonResponse) {
+            return $profile;
+        }
+
+        $attendance = Absensi::where('participant_code', $profile->participant_code)
+>>>>>>> origin/main
             ->whereDate('tanggal', today())
             ->first();
 
-        if (!$attendance) {
+        if (! $attendance) {
             return response()->json(['message' => 'Lakukan absensi masuk terlebih dahulu.'], 422);
         }
 
@@ -155,11 +274,15 @@ class AbsensiController extends Controller
 
     public function update(Request $request, string $id): JsonResponse
     {
+        if (! in_array($request->user()?->role, ['admin', 'pembimbing'], true)) {
+            return response()->json(['message' => 'Anda tidak memiliki izin untuk mengubah data absensi.'], 403);
+        }
+
         // Validasi input
         $validated = $request->validate([
             'jam_masuk' => ['nullable', 'string', 'max:20'],
             'jam_pulang' => ['nullable', 'string', 'max:20'],
-            'status' => ['required', 'in:Hadir,Izin,Sakit,Alpa,Belum hadir'],
+            'status' => ['required', 'in:Hadir,Tidak Hadir,Izin,Sakit,Alpa,Belum hadir'],
             'participant_code' => ['required', 'string', 'max:30'],
             'participant_name' => ['required', 'string', 'max:100'],
             'tanggal' => ['required', 'date'],
@@ -189,7 +312,7 @@ class AbsensiController extends Controller
             ->whereDate('tanggal', $validated['tanggal'])
             ->first();
 
-        if (!$attendance) {
+        if (! $attendance) {
             if ($validated['status'] === 'Belum hadir') {
                 return response()->json(['message' => 'Tidak ada perubahan.']);
             }
@@ -216,4 +339,64 @@ class AbsensiController extends Controller
 
         return response()->json(['message' => 'Data absensi berhasil diperbarui.', 'data' => $attendance]);
     }
+<<<<<<< HEAD
+=======
+
+    public function store(Request $request): JsonResponse
+    {
+        if (! in_array($request->user()?->role, ['admin', 'pembimbing'], true)) {
+            return response()->json(['message' => 'Anda tidak memiliki izin untuk menambahkan data absensi.'], 403);
+        }
+
+        $validated = $request->validate([
+            'participant_code' => ['required', 'string', 'max:30'],
+            'participant_name' => ['required', 'string', 'max:100'],
+            'tanggal' => ['required', 'date'],
+            'jam_masuk' => ['nullable', 'string', 'max:20'],
+            'jam_pulang' => ['nullable', 'string', 'max:20'],
+            'status' => ['required', 'in:Hadir,Tidak Hadir,Izin,Sakit,Alpa'],
+            'keterangan' => ['nullable', 'string', 'max:255'],
+            'pembimbing_id' => ['nullable', 'integer'],
+        ]);
+
+        $attendance = Absensi::create($validated);
+
+        return response()->json([
+            'message' => 'Data absensi berhasil ditambahkan.',
+            'data' => $attendance,
+        ], 201);
+    }
+
+    public function destroy(Request $request, string $id): JsonResponse
+    {
+        if (! in_array($request->user()?->role, ['admin', 'pembimbing'], true)) {
+            return response()->json(['message' => 'Anda tidak memiliki izin untuk menghapus data absensi.'], 403);
+        }
+
+        $attendance = Absensi::findOrFail($id);
+        $attendance->delete();
+
+        return response()->json(['message' => 'Data absensi berhasil dihapus.']);
+    }
+
+    private function participantProfile(Request $request): Magang|JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user || ! in_array($user->role, ['peserta', 'user'], true)) {
+            return response()->json([
+                'message' => 'Absensi pribadi hanya tersedia untuk akun peserta.',
+            ], 403);
+        }
+
+        $profile = $user->magang;
+        if (! $profile || $profile->status !== 'Aktif') {
+            return response()->json([
+                'message' => 'Akun ini belum ditautkan ke peserta magang aktif. Hubungi pengelola untuk menautkan akun dan NPM Anda.',
+            ], 403);
+        }
+
+        return $profile;
+    }
+>>>>>>> origin/main
 }

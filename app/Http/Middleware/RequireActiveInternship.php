@@ -16,12 +16,14 @@ class RequireActiveInternship
             return $next($request);
         }
 
-        $isActive = $user
-            && $user->pendaftarans()->where('status', 'Pemagang Aktif')->exists();
+        $isActive = $user && (
+            $user->pendaftarans()->where('status', 'Pemagang Aktif')->exists()
+            || $user->magang()->where('status', 'Aktif')->exists()
+        );
 
         if (! $isActive) {
             return response()->json([
-                'message' => 'Fitur ini hanya tersedia untuk peserta dengan status Pemagang Aktif.',
+                'message' => 'Akun ini belum ditautkan ke peserta magang aktif. Hubungi pengelola untuk menautkan akun dan NPM Anda.',
             ], 403);
         }
 
