@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\LaporanMagang;
+use App\Models\Pendaftaran;
 use App\Models\RiwayatRevisiLaporan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +18,22 @@ class LaporanMagangController extends Controller
      */
     public function index(Request $request)
     {
-        $query = LaporanMagang::with(['riwayatRevisi', 'penilaian']);
+        $user = $request->user();
+        $query = LaporanMagang::with([
+            'riwayatRevisi',
+            'penilaian',
+            'peserta:id,name,email',
+            'peserta.pendaftarans' => fn ($registrationQuery) => $registrationQuery->orderByDesc('id'),
+        ]);
+
+        if (strtolower((string) $user?->role) === 'pembimbing') {
+            $assignedParticipantIds = Pendaftaran::where('pembimbing_id', $user->id)
+                ->where('status', 'Pemagang Aktif')
+                ->select('user_id');
+            $query->whereIn('id_peserta', $assignedParticipantIds);
+        } elseif (in_array(strtolower((string) $user?->role), ['peserta', 'pemagang'], true)) {
+            $query->where('id_peserta', $user->id);
+        }
 
         if ($request->has('search') && !empty($request->search)) {
             $search = $request->search;
@@ -35,7 +51,17 @@ class LaporanMagangController extends Controller
             $query->where('status_laporan', $request->status);
         }
 
-        $laporan = $query->orderBy('id_laporan', 'desc')->get();
+        $laporan = $query->orderBy('id_laporan', 'desc')->get()->map(function (LaporanMagang $item) {
+            $registration = $item->peserta?->pendaftarans
+                ->first(fn (Pendaftaran $pendaftaran) => $pendaftaran->status === 'Pemagang Aktif')
+                ?? $item->peserta?->pendaftarans->first();
+
+            $item->setAttribute('nama_peserta', $item->peserta?->name);
+            $item->setAttribute('email_peserta', $item->peserta?->email);
+            $item->setAttribute('asal_instansi', $registration?->asal_instansi);
+
+            return $item;
+        });
 
         return response()->json([
             'success' => true,
@@ -50,7 +76,6 @@ class LaporanMagangController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'id_peserta' => 'required|integer',
             'judul_laporan' => 'required|string|max:255',
             'kategori_laporan' => 'required|in:Individu,Kelompok',
             'abstrak' => 'nullable|string',
@@ -64,10 +89,22 @@ class LaporanMagangController extends Controller
             ], 422);
         }
 
+        $registration = Pendaftaran::where('user_id', $request->user()->id)
+            ->where('status', 'Pemagang Aktif')
+            ->whereNotNull('pembimbing_id')
+            ->first();
+
+        if (!$registration) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Laporan hanya dapat diunggah oleh pemagang aktif yang sudah ditugaskan kepada pembimbing.',
+            ], 403);
+        }
+
         $filePath = $request->file('file_laporan_pdf')->store('laporan', 'public');
 
         $laporan = LaporanMagang::create([
-            'id_peserta' => $request->id_peserta,
+            'id_peserta' => $request->user()->id,
             'judul_laporan' => $request->judul_laporan,
             'kategori_laporan' => $request->kategori_laporan,
             'abstrak' => $request->abstrak,

@@ -40,4 +40,9 @@ class LaporanMagang extends Model
     {
         return $this->hasMany(Penilaian::class, 'id_laporan_magang', 'id_laporan')->orderByDesc('id_penilaian');
     }
+
+    public function peserta()
+    {
+        return $this->belongsTo(User::class, 'id_peserta');
+    }
 }

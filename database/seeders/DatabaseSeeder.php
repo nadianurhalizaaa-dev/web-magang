@@ -26,7 +26,7 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        User::firstOrCreate(
+        $peserta = User::firstOrCreate(
             ['email' => 'peserta@absensi.com'],
             [
                 'name' => 'Peserta Magang',
@@ -36,6 +36,22 @@ class DatabaseSeeder extends Seeder
                 'foto' => null,
             ]
         );
+
+        $demoProfile = [
+            'nim' => 'DEMO-' . str_pad((string) $peserta->id, 6, '0', STR_PAD_LEFT),
+            'program_studi' => 'Contoh Program Studi (akun demo)',
+            'alamat' => 'Alamat contoh untuk akun demo - bukan data nyata.',
+        ];
+
+        foreach ($demoProfile as $field => $value) {
+            if (blank($peserta->{$field})) {
+                $peserta->{$field} = $value;
+            }
+        }
+
+        if ($peserta->isDirty()) {
+            $peserta->save();
+        }
 
         $this->call(PembimbingSeeder::class);
         $this->call(MagangSeeder::class);

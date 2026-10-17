@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Pendaftaran;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class PendaftaranController extends Controller
@@ -21,8 +22,41 @@ class PendaftaranController extends Controller
     public function myRegistration()
     {
         $user = Auth::user();
-        $pendaftaran = Pendaftaran::with(['periode', 'pembimbing'])->where('user_id', $user->id)->first();
+        $pendaftaran = Pendaftaran::with(['user', 'periode', 'pembimbing'])->where('user_id', $user->id)->first();
         return response()->json(['data' => $pendaftaran]);
+    }
+
+    public function downloadReplyLetter()
+    {
+        $pendaftaran = Pendaftaran::query()
+            ->where('user_id', Auth::id())
+            ->where('status', 'Pemagang Aktif')
+            ->latest('id')
+            ->first();
+
+        if (! $pendaftaran || ! $pendaftaran->file_surat_balasan) {
+            return response()->json(['message' => 'Surat balasan belum tersedia.'], 404);
+        }
+
+        $storedPath = $pendaftaran->file_surat_balasan;
+        if (! str_starts_with($storedPath, 'storage/surat_balasan/')) {
+            return response()->json(['message' => 'Lokasi surat balasan tidak valid.'], 404);
+        }
+
+        $relativePath = 'surat_balasan/' . basename($storedPath);
+        $disk = Storage::disk('public');
+        if (! $disk->exists($relativePath)) {
+            $disk = Storage::disk('local');
+            $relativePath = 'public/' . $relativePath;
+            if (! $disk->exists($relativePath)) {
+                return response()->json(['message' => 'Berkas surat balasan tidak ditemukan.'], 404);
+            }
+        }
+
+        $pendaftaran->surat_balasan_diterima_at = now();
+        $pendaftaran->save();
+
+        return $disk->download($relativePath, basename($relativePath));
     }
 
     // Pemagang submit registration
@@ -31,6 +65,10 @@ class PendaftaranController extends Controller
         $request->validate([
             'periode_id' => 'required|exists:periode_magangs,id',
             'asal_instansi' => 'required|string|max:150',
+            'no_hp' => 'required|string|max:20',
+            'program_studi' => 'required|string|max:150',
+            'alamat' => 'required|string|max:1000',
+            'pas_foto' => 'required|image|mimes:jpg,jpeg,png|max:2048',
             'file_surat_pengantar' => 'required|file|mimes:pdf|max:2048',
         ]);
 
@@ -41,6 +79,15 @@ class PendaftaranController extends Controller
         if ($existing) {
             return response()->json(['message' => 'Anda sudah mendaftar magang'], 400);
         }
+
+        $photoPath = $request->file('pas_foto')->store('pas_foto', 'public');
+
+        $user->update([
+            'no_hp' => $request->input('no_hp'),
+            'program_studi' => $request->input('program_studi'),
+            'alamat' => $request->input('alamat'),
+            'foto' => $photoPath,
+        ]);
 
         // Handle file upload
         $file = $request->file('file_surat_pengantar');
@@ -55,6 +102,7 @@ class PendaftaranController extends Controller
             'tanggal_daftar' => now(),
             'status' => 'Calon Pemagang',
         ]);
+        $pendaftaran->load(['user', 'periode', 'pembimbing']);
 
         return response()->json(['data' => $pendaftaran, 'message' => 'Pendaftaran berhasil dikirim']);
     }
@@ -80,8 +128,9 @@ class PendaftaranController extends Controller
         if ($request->hasFile('file_surat_balasan')) {
             $file = $request->file('file_surat_balasan');
             $filename = time() . '_' . $file->getClientOriginalName();
-            $path = $file->storeAs('public/surat_balasan', $filename);
+            $file->storeAs('surat_balasan', $filename, 'public');
             $pendaftaran->file_surat_balasan = 'storage/surat_balasan/' . $filename;
+            $pendaftaran->surat_balasan_diterima_at = null;
         }
 
         $pendaftaran->save();

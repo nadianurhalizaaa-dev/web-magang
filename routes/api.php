@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\PendaftaranController;
 use App\Http\Controllers\Api\TugasController;
 use App\Http\Controllers\Api\LaporanMagangController;
 use App\Http\Controllers\Api\PenilaianController;
+use App\Http\Controllers\Api\RekapitulasiController;
 
 Route::post('/register', [ApiAuthController::class, 'register']);
 Route::post('/login', [ApiAuthController::class, 'login']);
@@ -40,23 +41,24 @@ Route::middleware('auth:sanctum')->group(function () {
     });
     Route::middleware('role:peserta')->group(function () {
         Route::get('/pendaftaran/me', [PendaftaranController::class, 'myRegistration']);
+        Route::get('/pendaftaran/me/surat-balasan/download', [PendaftaranController::class, 'downloadReplyLetter']);
         Route::post('/pendaftaran', [PendaftaranController::class, 'store']);
         Route::put('/pendaftaran/cancel', [PendaftaranController::class, 'cancelRegistration']);
     });
 
-    // The legacy attendance UI uses participant codes. Read and edit operations
-    // are restricted to staff; participant attendance routes require an active
-    // internship account. The current schema still needs an explicit account-to-
-    // participant-code link to enforce ownership of that code.
+    // Pembimbing hanya membaca dan mengubah absensi peserta aktif yang ditugaskan.
+    // Identitas peserta pada alur baru ditautkan ke akun melalui USER-{id}.
     Route::middleware('role:admin,pembimbing')->group(function () {
         Route::get('/absensi', [AbsensiController::class, 'index']);
         Route::put('/absensi/{id}', [AbsensiController::class, 'update']);
     });
     Route::middleware(['role:admin,pembimbing,peserta', 'active.internship'])->group(function () {
         Route::get('/magang', [MagangController::class, 'index']);
+    });
+    Route::middleware(['role:admin,pembimbing,peserta', 'active.internship', 'reply.letter.received'])->group(function () {
         Route::get('/absensi/hari-ini', [AbsensiController::class, 'today']);
     });
-    Route::middleware(['role:peserta', 'active.internship'])->group(function () {
+    Route::middleware(['role:peserta', 'active.internship', 'reply.letter.received'])->group(function () {
         Route::post('/absensi/masuk', [AbsensiController::class, 'checkIn']);
         Route::post('/absensi/pulang', [AbsensiController::class, 'checkOut']);
         Route::get('/absensi-saya', [AbsensiController::class, 'myAttendance']);
@@ -93,6 +95,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::delete('/laporan-magang/{id}', [LaporanMagangController::class, 'destroy']);
         Route::get('/penilaian', [PenilaianController::class, 'index']);
         Route::post('/penilaian', [PenilaianController::class, 'store']);
+        Route::get('/rekapitulasi', [RekapitulasiController::class, 'index']);
     });
 });
 

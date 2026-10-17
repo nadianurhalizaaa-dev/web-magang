@@ -19,6 +19,7 @@ class Pendaftaran extends Model
         'tanggal_daftar',
         'tanggal_selesai',
         'file_surat_balasan',
+        'surat_balasan_diterima_at',
     ];
 
     public function user()
