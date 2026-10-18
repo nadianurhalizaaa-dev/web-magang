@@ -3,11 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Absensi;
-<<<<<<< HEAD
 use App\Models\Pendaftaran;
-=======
 use App\Models\Magang;
->>>>>>> origin/main
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -29,7 +26,6 @@ class AbsensiController extends Controller
 
         $query = Absensi::with(['pembimbing', 'user']);
 
-<<<<<<< HEAD
         if (strtolower((string) $request->user()?->role) === 'pembimbing') {
             $assignedUserIds = Pendaftaran::query()
                 ->where('pembimbing_id', $request->user()->id)
@@ -38,10 +34,8 @@ class AbsensiController extends Controller
             $query->whereIn('user_id', $assignedUserIds);
         }
 
-        if (!empty($validated['participant_code'])) {
-=======
+       
         if (! empty($validated['participant_code'])) {
->>>>>>> origin/main
             $query->where('participant_code', $validated['participant_code']);
         }
 
@@ -58,7 +52,6 @@ class AbsensiController extends Controller
 
     public function today(Request $request): JsonResponse
     {
-<<<<<<< HEAD
         $user = $request->user();
 
         if ($user?->role === 'peserta') {
@@ -73,7 +66,6 @@ class AbsensiController extends Controller
                 ->whereDate('tanggal', today())
                 ->first();
         }
-=======
         $profile = $this->participantProfile($request);
         if ($profile instanceof JsonResponse) {
             return $profile;
@@ -82,7 +74,6 @@ class AbsensiController extends Controller
         $attendance = Absensi::where('participant_code', $profile->participant_code)
             ->whereDate('tanggal', today())
             ->first();
->>>>>>> origin/main
 
         return response()->json($attendance);
     }
@@ -97,16 +88,13 @@ class AbsensiController extends Controller
             ], 403);
         }
 
-<<<<<<< HEAD
-        $attendance = Absensi::where('user_id', $user->id)
-=======
+        $attendance = Absensi::where('user_id', $user->id);
         $profile = $this->participantProfile($request);
         if ($profile instanceof JsonResponse) {
             return $profile;
         }
 
         $attendance = Absensi::where('participant_code', $profile->participant_code)
->>>>>>> origin/main
             ->orderByDesc('tanggal')
             ->get();
 
@@ -117,16 +105,11 @@ class AbsensiController extends Controller
     {
         $user = $request->user();
         $validated = $request->validate([
-<<<<<<< HEAD
-            'status' => ['nullable', 'in:Hadir,Izin,Sakit,Alpa'],
-=======
             'status' => ['nullable', 'in:Hadir,Tidak Hadir,Izin,Sakit,Alpa'],
->>>>>>> origin/main
             'keterangan' => ['nullable', 'string', 'max:255'],
             'foto' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ]);
 
-<<<<<<< HEAD
         $registration = $user->pendaftarans()->where('status', 'Pemagang Aktif')->latest('id')->first();
         if (! $registration) {
             return response()->json(['message' => 'Akun ini belum memiliki pendaftaran magang aktif.'], 403);
@@ -144,10 +127,7 @@ class AbsensiController extends Controller
             ? $request->file('foto')->store('absensi', 'public')
             : null;
 
-        $attendance = Absensi::firstOrCreate(
-            [
-                'participant_code' => $participantCode,
-=======
+       
         $profile = $this->participantProfile($request);
         if ($profile instanceof JsonResponse) {
             return $profile;
@@ -167,17 +147,14 @@ class AbsensiController extends Controller
         $attendance = Absensi::firstOrCreate(
             [
                 'participant_code' => $profile->participant_code,
->>>>>>> origin/main
                 'tanggal' => today(),
             ],
             [
                 'user_id' => $user->id,
-<<<<<<< HEAD
                 'participant_name' => $participantName,
                 'institution' => $institution,
                 'jam_masuk' => now()->format('H:i:s'),
                 'status' => $status,
-=======
                 'magang_id' => $profile->id,
                 'pembimbing_id' => $pembimbingId,
                 'participant_name' => $profile->participant_name,
@@ -185,7 +162,6 @@ class AbsensiController extends Controller
                 'jam_masuk' => $isNotPresent ? null : now()->format('H:i:s'),
                 'status' => $finalStatus,
                 'approval_status' => $isLeaveRequest ? 'pending' : null,
->>>>>>> origin/main
                 'keterangan' => $validated['keterangan'] ?? null,
                 'foto' => $photoPath,
             ]
@@ -241,17 +217,14 @@ class AbsensiController extends Controller
 
     public function checkOut(Request $request): JsonResponse
     {
-<<<<<<< HEAD
         $user = $request->user();
-        $attendance = Absensi::where('user_id', $user->id)
-=======
+        $attendance = Absensi::where('user_id', $user->id);
         $profile = $this->participantProfile($request);
         if ($profile instanceof JsonResponse) {
             return $profile;
         }
 
         $attendance = Absensi::where('participant_code', $profile->participant_code)
->>>>>>> origin/main
             ->whereDate('tanggal', today())
             ->first();
 
@@ -339,8 +312,6 @@ class AbsensiController extends Controller
 
         return response()->json(['message' => 'Data absensi berhasil diperbarui.', 'data' => $attendance]);
     }
-<<<<<<< HEAD
-=======
 
     public function store(Request $request): JsonResponse
     {
@@ -398,5 +369,4 @@ class AbsensiController extends Controller
 
         return $profile;
     }
->>>>>>> origin/main
 }
