@@ -14,4 +14,14 @@ class PeriodeMagang extends Model
         'tanggal_mulai',
         'tanggal_selesai',
     ];
+
+    public function pendaftarans()
+    {
+        return $this->hasMany(Pendaftaran::class, 'periode_id');
+    }
+
+    public function magangs()
+    {
+        return $this->hasMany(Magang::class, 'periode_id');
+    }
 }

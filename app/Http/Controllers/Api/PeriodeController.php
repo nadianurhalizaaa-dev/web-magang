@@ -10,7 +10,7 @@ class PeriodeController extends Controller
 {
     public function index()
     {
-        $periodes = PeriodeMagang::all();
+        $periodes = PeriodeMagang::with(['pendaftarans.user', 'pendaftarans.pembimbing', 'magangs'])->get();
         return response()->json(['data' => $periodes]);
     }
 

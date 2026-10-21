@@ -15,12 +15,14 @@ class RequireReplyLetterReceipt
             return $next($request);
         }
 
-        $hasReceivedLetter = $user
-            && $user->pendaftarans()
+        $hasReceivedLetter = $user && (
+            $user->magang()->where('status', 'Aktif')->exists()
+            || $user->pendaftarans()
                 ->where('status', 'Pemagang Aktif')
                 ->whereNotNull('file_surat_balasan')
                 ->whereNotNull('surat_balasan_diterima_at')
-                ->exists();
+                ->exists()
+        );
 
         if (! $hasReceivedLetter) {
             return response()->json([

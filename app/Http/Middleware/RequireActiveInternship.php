@@ -23,7 +23,7 @@ class RequireActiveInternship
 
         if (! $isActive) {
             return response()->json([
-                'message' => 'Akun ini belum ditautkan ke peserta magang aktif. Hubungi pengelola untuk menautkan akun dan NPM Anda.',
+                'message' => 'Absensi hanya tersedia untuk peserta dengan pendaftaran magang aktif.',
             ], 403);
         }
 

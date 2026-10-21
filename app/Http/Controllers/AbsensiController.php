@@ -3,11 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Absensi;
-<<<<<<< HEAD
+use App\Models\LokasiAbsensi;
 use App\Models\Pendaftaran;
-=======
-use App\Models\Magang;
->>>>>>> origin/main
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -29,7 +26,6 @@ class AbsensiController extends Controller
 
         $query = Absensi::with(['pembimbing', 'user']);
 
-<<<<<<< HEAD
         if (strtolower((string) $request->user()?->role) === 'pembimbing') {
             $assignedUserIds = Pendaftaran::query()
                 ->where('pembimbing_id', $request->user()->id)
@@ -38,10 +34,7 @@ class AbsensiController extends Controller
             $query->whereIn('user_id', $assignedUserIds);
         }
 
-        if (!empty($validated['participant_code'])) {
-=======
         if (! empty($validated['participant_code'])) {
->>>>>>> origin/main
             $query->where('participant_code', $validated['participant_code']);
         }
 
@@ -58,11 +51,15 @@ class AbsensiController extends Controller
 
     public function today(Request $request): JsonResponse
     {
-<<<<<<< HEAD
         $user = $request->user();
 
-        if ($user?->role === 'peserta') {
-            $attendance = Absensi::where('user_id', $user->id)
+        if (in_array($user?->role, ['peserta', 'user'], true)) {
+            $profile = $this->participantProfile($request);
+            if ($profile instanceof JsonResponse) {
+                return $profile;
+            }
+
+            $attendance = Absensi::where('participant_code', $profile['participant_code'])
                 ->whereDate('tanggal', today())
                 ->first();
         } else {
@@ -73,16 +70,6 @@ class AbsensiController extends Controller
                 ->whereDate('tanggal', today())
                 ->first();
         }
-=======
-        $profile = $this->participantProfile($request);
-        if ($profile instanceof JsonResponse) {
-            return $profile;
-        }
-
-        $attendance = Absensi::where('participant_code', $profile->participant_code)
-            ->whereDate('tanggal', today())
-            ->first();
->>>>>>> origin/main
 
         return response()->json($attendance);
     }
@@ -97,16 +84,12 @@ class AbsensiController extends Controller
             ], 403);
         }
 
-<<<<<<< HEAD
-        $attendance = Absensi::where('user_id', $user->id)
-=======
         $profile = $this->participantProfile($request);
         if ($profile instanceof JsonResponse) {
             return $profile;
         }
 
-        $attendance = Absensi::where('participant_code', $profile->participant_code)
->>>>>>> origin/main
+        $attendance = Absensi::where('participant_code', $profile['participant_code'])
             ->orderByDesc('tanggal')
             ->get();
 
@@ -117,37 +100,13 @@ class AbsensiController extends Controller
     {
         $user = $request->user();
         $validated = $request->validate([
-<<<<<<< HEAD
-            'status' => ['nullable', 'in:Hadir,Izin,Sakit,Alpa'],
-=======
             'status' => ['nullable', 'in:Hadir,Tidak Hadir,Izin,Sakit,Alpa'],
->>>>>>> origin/main
             'keterangan' => ['nullable', 'string', 'max:255'],
             'foto' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
         ]);
 
-<<<<<<< HEAD
-        $registration = $user->pendaftarans()->where('status', 'Pemagang Aktif')->latest('id')->first();
-        if (! $registration) {
-            return response()->json(['message' => 'Akun ini belum memiliki pendaftaran magang aktif.'], 403);
-        }
-
-        // Identitas absensi peserta diambil dari sesi login dan pendaftaran aktif,
-        // bukan dari kode/nama yang dikirim browser.
-        $participantCode = 'USER-' . $user->id;
-        $participantName = $user->name;
-        $institution = $registration->asal_instansi;
-
-        $status = $validated['status'] ?? 'Hadir';
-
-        $photoPath = $request->hasFile('foto')
-            ? $request->file('foto')->store('absensi', 'public')
-            : null;
-
-        $attendance = Absensi::firstOrCreate(
-            [
-                'participant_code' => $participantCode,
-=======
         $profile = $this->participantProfile($request);
         if ($profile instanceof JsonResponse) {
             return $profile;
@@ -155,39 +114,51 @@ class AbsensiController extends Controller
 
         $status = $validated['status'] ?? 'Hadir';
         $isLeaveRequest = $status === 'Izin';
-        $isNotPresent = in_array($status, ['Tidak Hadir', 'Izin', 'Sakit', 'Alpa']);
+        $isNotPresent = in_array($status, ['Tidak Hadir', 'Izin', 'Sakit', 'Alpa'], true);
+        $finalStatus = $isNotPresent
+            ? ($isLeaveRequest ? 'Tidak Hadir' : $status)
+            : 'Hadir';
+        $pembimbingId = $profile['pembimbing_id'] ?? $user->pembimbing_id;
 
-        $user = $request->user();
-        $pembimbingId = $profile->pembimbing_id ?? $user->pembimbing_id;
+        $userLat = isset($validated['latitude']) ? (float) $validated['latitude'] : null;
+        $userLng = isset($validated['longitude']) ? (float) $validated['longitude'] : null;
+        $geofenceDistance = null;
+
+        // Validasi radius lokasi kantor hanya untuk kehadiran Hadir
+        if ($finalStatus === 'Hadir') {
+            $geofence = $this->validateGeofence($userLat, $userLng);
+            if (! $geofence['valid']) {
+                return response()->json([
+                    'message' => $geofence['message'],
+                    'data' => [
+                        'distance' => $geofence['distance'] ?? null,
+                    ],
+                ], 422);
+            }
+            $geofenceDistance = $geofence['distance'] ?? null;
+        }
 
         $photoPath = $request->file('foto')?->store('absensi', 'public');
 
-        $finalStatus = $isNotPresent ? ($status === 'Tidak Hadir' ? 'Tidak Hadir' : ($isLeaveRequest ? 'Tidak Hadir' : $status)) : 'Hadir';
-
         $attendance = Absensi::firstOrCreate(
             [
-                'participant_code' => $profile->participant_code,
->>>>>>> origin/main
+                'participant_code' => $profile['participant_code'],
                 'tanggal' => today(),
             ],
             [
                 'user_id' => $user->id,
-<<<<<<< HEAD
-                'participant_name' => $participantName,
-                'institution' => $institution,
-                'jam_masuk' => now()->format('H:i:s'),
-                'status' => $status,
-=======
-                'magang_id' => $profile->id,
+                'magang_id' => $profile['magang_id'],
                 'pembimbing_id' => $pembimbingId,
-                'participant_name' => $profile->participant_name,
-                'institution' => $profile->institution,
+                'participant_name' => $profile['participant_name'],
+                'institution' => $profile['institution'],
                 'jam_masuk' => $isNotPresent ? null : now()->format('H:i:s'),
                 'status' => $finalStatus,
                 'approval_status' => $isLeaveRequest ? 'pending' : null,
->>>>>>> origin/main
                 'keterangan' => $validated['keterangan'] ?? null,
                 'foto' => $photoPath,
+                'latitude' => $userLat,
+                'longitude' => $userLng,
+                'jarak_meter' => $geofenceDistance,
             ]
         );
 
@@ -241,17 +212,17 @@ class AbsensiController extends Controller
 
     public function checkOut(Request $request): JsonResponse
     {
-<<<<<<< HEAD
-        $user = $request->user();
-        $attendance = Absensi::where('user_id', $user->id)
-=======
+        $validated = $request->validate([
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+        ]);
+
         $profile = $this->participantProfile($request);
         if ($profile instanceof JsonResponse) {
             return $profile;
         }
 
-        $attendance = Absensi::where('participant_code', $profile->participant_code)
->>>>>>> origin/main
+        $attendance = Absensi::where('participant_code', $profile['participant_code'])
             ->whereDate('tanggal', today())
             ->first();
 
@@ -265,6 +236,22 @@ class AbsensiController extends Controller
 
         if (now()->format('H:i') < '17:00') {
             return response()->json(['message' => 'Belum waktunya pulang. Absensi pulang hanya bisa dilakukan mulai jam 17:00.'], 422);
+        }
+
+        $userLat = isset($validated['latitude']) ? (float) $validated['latitude'] : null;
+        $userLng = isset($validated['longitude']) ? (float) $validated['longitude'] : null;
+
+        // Validasi lokasi pulang jika absensi masuk adalah Hadir
+        if ($attendance->status === 'Hadir') {
+            $geofence = $this->validateGeofence($userLat, $userLng);
+            if (! $geofence['valid']) {
+                return response()->json([
+                    'message' => $geofence['message'],
+                    'data' => [
+                        'distance' => $geofence['distance'] ?? null,
+                    ],
+                ], 422);
+            }
         }
 
         $attendance->update(['jam_pulang' => now()->format('H:i:s')]);
@@ -339,8 +326,6 @@ class AbsensiController extends Controller
 
         return response()->json(['message' => 'Data absensi berhasil diperbarui.', 'data' => $attendance]);
     }
-<<<<<<< HEAD
-=======
 
     public function store(Request $request): JsonResponse
     {
@@ -379,7 +364,7 @@ class AbsensiController extends Controller
         return response()->json(['message' => 'Data absensi berhasil dihapus.']);
     }
 
-    private function participantProfile(Request $request): Magang|JsonResponse
+    private function participantProfile(Request $request): array|JsonResponse
     {
         $user = $request->user();
 
@@ -390,13 +375,100 @@ class AbsensiController extends Controller
         }
 
         $profile = $user->magang;
-        if (! $profile || $profile->status !== 'Aktif') {
+        if ($profile && $profile->status === 'Aktif') {
+            return [
+                'participant_code' => $profile->participant_code,
+                'participant_name' => $profile->participant_name,
+                'institution' => $profile->institution,
+                'magang_id' => $profile->id,
+                'pembimbing_id' => $profile->pembimbing_id ?? $user->pembimbing_id,
+            ];
+        }
+
+        $registration = $user->pendaftarans()
+            ->where('status', 'Pemagang Aktif')
+            ->latest('id')
+            ->first();
+
+        if (! $registration) {
             return response()->json([
-                'message' => 'Akun ini belum ditautkan ke peserta magang aktif. Hubungi pengelola untuk menautkan akun dan NPM Anda.',
+                'message' => 'Absensi hanya tersedia untuk peserta dengan pendaftaran magang aktif.',
             ], 403);
         }
 
-        return $profile;
+        return [
+            'participant_code' => 'USER-' . $user->id,
+            'participant_name' => $user->name,
+            'institution' => $registration->asal_instansi,
+            'magang_id' => null,
+            'pembimbing_id' => $registration->pembimbing_id,
+        ];
     }
->>>>>>> origin/main
+
+    private function calculateDistance(float $lat1, float $lon1, float $lat2, float $lon2): float
+    {
+        $earthRadius = 6371000; // in meters
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLon = deg2rad($lon2 - $lon1);
+
+        $a = sin($dLat / 2) * sin($dLat / 2) +
+            cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
+            sin($dLon / 2) * sin($dLon / 2);
+
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+
+        return $earthRadius * $c;
+    }
+
+    private function validateGeofence(?float $lat, ?float $lng): array
+    {
+        $activeLocations = LokasiAbsensi::where('is_active', true)->get();
+
+        if ($activeLocations->isEmpty()) {
+            return ['valid' => true, 'distance' => null, 'location' => null];
+        }
+
+        if ($lat === null || $lng === null) {
+            return [
+                'valid' => false,
+                'message' => 'Titik koordinat GPS diperlukan untuk absensi Hadir. Mohon aktifkan izin lokasi di browser Anda.',
+            ];
+        }
+
+        $isWithin = false;
+        $closestDistance = null;
+        $closestLocation = null;
+
+        foreach ($activeLocations as $loc) {
+            $dist = $this->calculateDistance($lat, $lng, (float) $loc->latitude, (float) $loc->longitude);
+            if ($closestDistance === null || $dist < $closestDistance) {
+                $closestDistance = $dist;
+                $closestLocation = $loc;
+            }
+            if ($dist <= $loc->radius_meter) {
+                $isWithin = true;
+                $closestDistance = $dist;
+                $closestLocation = $loc;
+                break;
+            }
+        }
+
+        if (! $isWithin) {
+            $distRounded = round($closestDistance ?? 0);
+            $maxRadius = $closestLocation ? $closestLocation->radius_meter : 100;
+            $nama = $closestLocation ? $closestLocation->nama_lokasi : 'kantor';
+            return [
+                'valid' => false,
+                'distance' => $distRounded,
+                'location' => $closestLocation,
+                'message' => "Anda berada di luar radius absensi {$nama}. Jarak Anda saat ini: {$distRounded} meter (Maksimal radius: {$maxRadius} meter). Absensi kehadiran ditolak.",
+            ];
+        }
+
+        return [
+            'valid' => true,
+            'distance' => round($closestDistance ?? 0),
+            'location' => $closestLocation,
+        ];
+    }
 }

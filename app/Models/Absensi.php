@@ -21,6 +21,9 @@ class Absensi extends Model
         'approval_status',
         'keterangan',
         'foto',
+        'latitude',
+        'longitude',
+        'jarak_meter',
     ];
 
     protected $appends = [
@@ -48,6 +51,6 @@ class Absensi extends Model
 
     public function pembimbing(): BelongsTo
     {
-        return $this->belongsTo(Pembimbing::class);
+        return $this->belongsTo(User::class, 'pembimbing_id');
     }
 }

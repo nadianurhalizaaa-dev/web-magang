@@ -101,10 +101,10 @@ class AuthController extends Controller
         }
 
         if (in_array($user->role, ['peserta', 'user'], true)
-            && (! $user->magang || $user->magang->status !== 'Aktif')) {
+            && $user->email === 'peserta@absensi.com') {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Akun peserta bersama tidak dapat digunakan. Keluar, lalu masuk memakai NPM dan password akun pribadi.',
+                'message' => 'Akun peserta bersama tidak dapat digunakan. Silakan masuk menggunakan email dan password akun pribadi.',
             ], 403);
         }
 

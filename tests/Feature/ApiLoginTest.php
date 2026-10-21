@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Absensi;
 use App\Models\Magang;
+use App\Models\Pendaftaran;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -56,6 +57,23 @@ class ApiLoginTest extends TestCase
             ->assertJsonStructure(['data' => ['access_token', 'token_type']]);
     }
 
+    public function test_participant_can_log_in_using_their_email_and_regular_password_without_a_magang_link(): void
+    {
+        User::factory()->create([
+            'email' => 'anisa@example.com',
+            'password' => 'regular-password',
+            'role' => 'peserta',
+        ]);
+
+        $this->postJson('/api/login', [
+            'email' => 'anisa@example.com',
+            'password' => 'regular-password',
+        ])
+            ->assertOk()
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('data.user.email', 'anisa@example.com');
+    }
+
     public function test_unlinked_shared_participant_account_cannot_log_in(): void
     {
         User::factory()->create([
@@ -69,7 +87,32 @@ class ApiLoginTest extends TestCase
             'password' => 'password',
         ])
             ->assertForbidden()
-            ->assertJsonPath('message', 'Akun peserta bersama tidak dapat digunakan. Keluar, lalu masuk memakai NPM dan password akun pribadi.');
+            ->assertJsonPath('message', 'Akun peserta bersama tidak dapat digunakan. Silakan masuk menggunakan email dan password akun pribadi.');
+    }
+
+    public function test_participant_with_active_registration_can_check_in_without_a_magang_link(): void
+    {
+        $participant = User::factory()->create([
+            'name' => 'Peserta Pendaftaran',
+            'role' => 'peserta',
+        ]);
+
+        Pendaftaran::create([
+            'user_id' => $participant->id,
+            'asal_instansi' => 'Sekolah Test',
+            'file_surat_pengantar' => 'surat_pengantar/test.pdf',
+            'status' => 'Pemagang Aktif',
+            'tanggal_daftar' => today(),
+            'file_surat_balasan' => 'storage/surat_balasan/test.pdf',
+            'surat_balasan_diterima_at' => now(),
+        ]);
+
+        $this->actingAs($participant, 'sanctum')
+            ->postJson('/api/absensi/masuk', ['status' => 'Hadir'])
+            ->assertCreated()
+            ->assertJsonPath('data.participant_code', 'USER-'.$participant->id)
+            ->assertJsonPath('data.participant_name', 'Peserta Pendaftaran')
+            ->assertJsonPath('data.user_id', $participant->id);
     }
 
     public function test_admin_can_add_an_attendance_record(): void
@@ -180,7 +223,7 @@ class ApiLoginTest extends TestCase
         $this->actingAs($participant, 'sanctum')
             ->postJson('/api/absensi/masuk', ['status' => 'Hadir'])
             ->assertForbidden()
-            ->assertJsonPath('message', 'Akun ini belum ditautkan ke peserta magang aktif. Hubungi pengelola untuk menautkan akun dan NPM Anda.');
+            ->assertJsonPath('message', 'Absensi hanya tersedia untuk peserta dengan pendaftaran magang aktif.');
 
         $this->actingAs($participant, 'sanctum')
             ->getJson('/api/absensi-saya')
