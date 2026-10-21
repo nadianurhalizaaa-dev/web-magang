@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Absensi;
 use App\Models\LokasiAbsensi;
+use App\Models\Magang;
 use App\Models\Pendaftaran;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;

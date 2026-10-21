@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Magang;
 use Illuminate\Database\Seeder;
 
+
 class MagangSeeder extends Seeder
 {
     /**
@@ -12,6 +13,7 @@ class MagangSeeder extends Seeder
      */
     public function run(): void
     {
+
         $items = [
             [
                 'participant_code' => '231013018',

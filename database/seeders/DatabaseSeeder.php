@@ -25,6 +25,16 @@ class DatabaseSeeder extends Seeder
                 'foto' => null,
             ]
         );
+        $admin = User::firstOrCreate(
+            ['email' => 'admin@absensi.com'],
+            [
+                'name' => 'admin',
+                'password' => bcrypt('admin123'),
+                'role' => 'admin',
+                'no_hp' => '081234567892',
+                'foto' => null,
+            ]
+        );
 
         $peserta = User::firstOrCreate(
             ['email' => 'peserta@absensi.com'],
@@ -36,6 +46,8 @@ class DatabaseSeeder extends Seeder
                 'foto' => null,
             ]
         );
+
+
 
         $demoProfile = [
             'nim' => 'DEMO-' . str_pad((string) $peserta->id, 6, '0', STR_PAD_LEFT),
@@ -56,5 +68,9 @@ class DatabaseSeeder extends Seeder
         $this->call(PembimbingSeeder::class);
         $this->call(MagangSeeder::class);
         $this->call(LokasiAbsensiSeeder::class);
+        $this->call([
+            BerandaSeeder::class,
+            LaporanMagangSeeder::class,
+        ]);
     }
 }

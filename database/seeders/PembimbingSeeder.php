@@ -17,5 +17,7 @@ class PembimbingSeeder extends Seeder
                 'bidang' => 'Pembimbing Lapangan',
             ]
         );
+
+        
     }
 }
