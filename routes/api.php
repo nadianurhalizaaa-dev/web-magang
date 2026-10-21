@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AbsensiController;
 use App\Http\Controllers\Api\AktivitasController as ApiAktivitasController;
+use App\Http\Controllers\Api\AttendanceScheduleController;
 use App\Http\Controllers\Api\AuthController as ApiAuthController;
 use App\Http\Controllers\Api\BerandaController as ApiBerandaController;
 use App\Http\Controllers\Api\LaporanMagangController;
@@ -9,19 +10,12 @@ use App\Http\Controllers\Api\ParticipantAccountController;
 use App\Http\Controllers\Api\PendaftaranController;
 use App\Http\Controllers\Api\PenilaianController;
 use App\Http\Controllers\Api\PeriodeController;
+use App\Http\Controllers\Api\RekapitulasiController;
 use App\Http\Controllers\Api\TugasController;
 use App\Http\Controllers\MagangController;
 use App\Http\Controllers\PembimbingController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-<<<<<<< HEAD
-use App\Http\Controllers\Api\PeriodeController;
-use App\Http\Controllers\Api\PendaftaranController;
-use App\Http\Controllers\Api\TugasController;
-use App\Http\Controllers\Api\LaporanMagangController;
-use App\Http\Controllers\Api\PenilaianController;
-use App\Http\Controllers\Api\RekapitulasiController;
-=======
 
 Route::get('/', function () {
     return response()->json([
@@ -30,7 +24,6 @@ Route::get('/', function () {
         'version' => '1.0.0',
     ]);
 });
->>>>>>> origin/main
 
 Route::post('/register', [ApiAuthController::class, 'register']);
 Route::post('/login', [ApiAuthController::class, 'login']);
@@ -82,16 +75,18 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/pendaftaran/cancel', [PendaftaranController::class, 'cancelRegistration']);
     });
 
-<<<<<<< HEAD
     // Pembimbing hanya membaca dan mengubah absensi peserta aktif yang ditugaskan.
     // Identitas peserta pada alur baru ditautkan ke akun melalui USER-{id}.
-=======
->>>>>>> origin/main
     Route::middleware('role:admin,pembimbing')->group(function () {
         Route::get('/absensi', [AbsensiController::class, 'index']);
         Route::put('/absensi/{id}', [AbsensiController::class, 'update']);
         Route::post('/absensi/{id}/review-izin', [AbsensiController::class, 'reviewLeave']);
     });
+    Route::middleware('role:pembimbing')->group(function () {
+        Route::get('/pembimbing/jadwal-absensi', [AttendanceScheduleController::class, 'showForSupervisor']);
+        Route::put('/pembimbing/jadwal-absensi', [AttendanceScheduleController::class, 'updateForSupervisor']);
+    });
+    Route::middleware('role:peserta')->get('/absensi/jadwal', [AttendanceScheduleController::class, 'showForParticipant']);
 
     Route::middleware(['role:admin,pembimbing,peserta', 'active.internship'])->group(function () {
         Route::get('/magang', [MagangController::class, 'index']);

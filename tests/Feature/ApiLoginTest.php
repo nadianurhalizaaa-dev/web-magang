@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Absensi;
 use App\Models\Magang;
+use App\Models\Pendaftaran;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -56,6 +57,56 @@ class ApiLoginTest extends TestCase
             ->assertJsonStructure(['data' => ['access_token', 'token_type']]);
     }
 
+    public function test_existing_participant_can_add_missing_nim_with_their_password(): void
+    {
+        $participant = User::factory()->create([
+            'email' => 'participant@example.com',
+            'password' => 'current-password',
+            'role' => 'peserta',
+            'nim' => null,
+        ]);
+
+        $this->postJson('/api/register', [
+            'nama' => $participant->name,
+            'nim' => '231013018',
+            'email' => $participant->email,
+            'password' => 'current-password',
+        ])
+            ->assertOk()
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('data.user.nim', '231013018');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $participant->id,
+            'nim' => '231013018',
+        ]);
+        $this->assertDatabaseCount('users', 1);
+    }
+
+    public function test_existing_participant_cannot_add_nim_without_their_password(): void
+    {
+        $participant = User::factory()->create([
+            'email' => 'participant@example.com',
+            'password' => 'current-password',
+            'role' => 'peserta',
+            'nim' => null,
+        ]);
+
+        $this->postJson('/api/register', [
+            'nama' => $participant->name,
+            'nim' => '231013018',
+            'email' => $participant->email,
+            'password' => 'wrong-password',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Email sudah terdaftar. Silakan masuk menggunakan akun tersebut.');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $participant->id,
+            'nim' => null,
+        ]);
+    }
+
     public function test_unlinked_shared_participant_account_cannot_log_in(): void
     {
         User::factory()->create([
@@ -106,10 +157,12 @@ class ApiLoginTest extends TestCase
             'role' => 'peserta',
             'magang_id' => $magang->id,
         ]);
+        $this->createActiveRegistration($participant);
 
         Absensi::create([
-            'participant_code' => $magang->participant_code,
+            'participant_code' => 'USER-'.$participant->id,
             'participant_name' => $magang->participant_name,
+            'user_id' => $participant->id,
             'tanggal' => '2026-10-15',
             'status' => 'Hadir',
         ]);
@@ -125,7 +178,7 @@ class ApiLoginTest extends TestCase
             ->getJson('/api/absensi-saya')
             ->assertOk()
             ->assertJsonCount(1)
-            ->assertJsonPath('0.participant_code', $magang->participant_code);
+            ->assertJsonPath('0.participant_code', 'USER-'.$participant->id);
     }
 
     public function test_participant_cannot_spoof_another_code_for_attendance_or_today_status(): void
@@ -136,10 +189,12 @@ class ApiLoginTest extends TestCase
             'role' => 'peserta',
             'magang_id' => $ownMagang->id,
         ]);
+        $this->createActiveRegistration($participant);
 
         $ownAttendance = Absensi::create([
-            'participant_code' => $ownMagang->participant_code,
+            'participant_code' => 'USER-'.$participant->id,
             'participant_name' => $ownMagang->participant_name,
+            'user_id' => $participant->id,
             'tanggal' => today(),
             'status' => 'Hadir',
         ]);
@@ -153,18 +208,19 @@ class ApiLoginTest extends TestCase
         $this->actingAs($participant, 'sanctum')
             ->getJson('/api/absensi/hari-ini?participant_code='.$otherMagang->participant_code)
             ->assertOk()
-            ->assertJsonPath('participant_code', $ownMagang->participant_code);
+            ->assertJsonPath('participant_code', 'USER-'.$participant->id);
 
         $ownAttendance->delete();
 
+        $this->travelTo(today()->setTime(8, 0));
         $this->actingAs($participant, 'sanctum')
             ->postJson('/api/absensi/masuk', [
                 'participant_code' => $otherMagang->participant_code,
                 'participant_name' => $otherMagang->participant_name,
             ])
             ->assertCreated()
-            ->assertJsonPath('data.participant_code', $ownMagang->participant_code)
-            ->assertJsonPath('data.participant_name', $ownMagang->participant_name)
+            ->assertJsonPath('data.participant_code', 'USER-'.$participant->id)
+            ->assertJsonPath('data.participant_name', $participant->name)
             ->assertJsonPath('data.user_id', $participant->id);
 
         $this->assertDatabaseMissing('absensis', [
@@ -185,6 +241,57 @@ class ApiLoginTest extends TestCase
         $this->actingAs($participant, 'sanctum')
             ->getJson('/api/absensi-saya')
             ->assertForbidden();
+    }
+
+    public function test_participant_can_check_in_starting_at_eight_am(): void
+    {
+        $magang = $this->createMagang('231013018', 'Peserta Test');
+        $participant = User::factory()->create([
+            'role' => 'peserta',
+            'magang_id' => $magang->id,
+        ]);
+        $this->createActiveRegistration($participant);
+
+        $this->travelTo(now()->setTime(7, 59));
+        $this->actingAs($participant, 'sanctum')
+            ->postJson('/api/absensi/masuk', ['status' => 'Hadir'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Belum waktunya absen masuk. Absensi masuk hanya bisa dilakukan mulai jam 08:00.');
+
+        $this->travelTo(now()->setTime(8, 0));
+        $this->actingAs($participant, 'sanctum')
+            ->postJson('/api/absensi/masuk', ['status' => 'Hadir'])
+            ->assertCreated();
+    }
+
+    public function test_participant_can_check_out_starting_at_five_pm(): void
+    {
+        $magang = $this->createMagang('231013018', 'Peserta Test');
+        $participant = User::factory()->create([
+            'role' => 'peserta',
+            'magang_id' => $magang->id,
+        ]);
+        $this->createActiveRegistration($participant);
+        Absensi::create([
+            'participant_code' => 'USER-'.$participant->id,
+            'participant_name' => $magang->participant_name,
+            'tanggal' => today(),
+            'jam_masuk' => '08:00:00',
+            'status' => 'Hadir',
+            'user_id' => $participant->id,
+            'magang_id' => $magang->id,
+        ]);
+
+        $this->travelTo(now()->setTime(16, 59));
+        $this->actingAs($participant, 'sanctum')
+            ->postJson('/api/absensi/pulang')
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Belum waktunya pulang. Absensi pulang hanya bisa dilakukan mulai jam 17:00.');
+
+        $this->travelTo(now()->setTime(17, 0));
+        $this->actingAs($participant, 'sanctum')
+            ->postJson('/api/absensi/pulang')
+            ->assertOk();
     }
 
     public function test_admin_can_link_a_participant_account_to_one_npm(): void
@@ -256,6 +363,19 @@ class ApiLoginTest extends TestCase
             'participant_name' => $name,
             'institution' => 'Sekolah Test',
             'status' => 'Aktif',
+        ]);
+    }
+
+    private function createActiveRegistration(User $user): Pendaftaran
+    {
+        return Pendaftaran::create([
+            'user_id' => $user->id,
+            'asal_instansi' => 'Sekolah Test',
+            'file_surat_pengantar' => 'surat_pengantar/test.pdf',
+            'status' => 'Pemagang Aktif',
+            'tanggal_daftar' => today(),
+            'file_surat_balasan' => 'storage/surat_balasan/test.pdf',
+            'surat_balasan_diterima_at' => now(),
         ]);
     }
 }

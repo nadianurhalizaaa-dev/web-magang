@@ -3,11 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Absensi;
-<<<<<<< HEAD
-use App\Models\Pendaftaran;
-=======
+use App\Models\AttendanceSchedule;
 use App\Models\Magang;
->>>>>>> origin/main
+use App\Models\Pembimbing;
+use App\Models\Pendaftaran;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -22,6 +22,8 @@ class AbsensiController extends Controller
             ], 403);
         }
 
+        $this->autoMarkAbsentAllIfDayEnded();
+
         $validated = $request->validate([
             'participant_code' => ['nullable', 'string', 'max:30'],
             'tanggal' => ['nullable', 'date'],
@@ -29,7 +31,6 @@ class AbsensiController extends Controller
 
         $query = Absensi::with(['pembimbing', 'user']);
 
-<<<<<<< HEAD
         if (strtolower((string) $request->user()?->role) === 'pembimbing') {
             $assignedUserIds = Pendaftaran::query()
                 ->where('pembimbing_id', $request->user()->id)
@@ -38,10 +39,7 @@ class AbsensiController extends Controller
             $query->whereIn('user_id', $assignedUserIds);
         }
 
-        if (!empty($validated['participant_code'])) {
-=======
         if (! empty($validated['participant_code'])) {
->>>>>>> origin/main
             $query->where('participant_code', $validated['participant_code']);
         }
 
@@ -58,31 +56,39 @@ class AbsensiController extends Controller
 
     public function today(Request $request): JsonResponse
     {
-<<<<<<< HEAD
         $user = $request->user();
 
-        if ($user?->role === 'peserta') {
-            $attendance = Absensi::where('user_id', $user->id)
+        if ($user && in_array(strtolower((string) $user->role), ['peserta', 'pemagang', 'user', 'calon pemagang'], true)) {
+            $profile = $this->participantProfile($request);
+            if ($profile instanceof JsonResponse) {
+                return $profile;
+            }
+
+            $this->autoMarkAbsentForUserIfDayEnded($user, $profile);
+
+            $attendance = Absensi::where(function ($query) use ($user, $profile) {
+                $query->where('user_id', $user->id)
+                    ->orWhere('participant_code', $profile['participant_code']);
+            })
                 ->whereDate('tanggal', today())
                 ->first();
         } else {
             $validated = $request->validate([
                 'participant_code' => ['required', 'string', 'max:30'],
             ]);
-            $attendance = Absensi::where('participant_code', $validated['participant_code'])
-                ->whereDate('tanggal', today())
-                ->first();
-        }
-=======
-        $profile = $this->participantProfile($request);
-        if ($profile instanceof JsonResponse) {
-            return $profile;
-        }
+            $query = Absensi::where('participant_code', $validated['participant_code'])
+                ->whereDate('tanggal', today());
 
-        $attendance = Absensi::where('participant_code', $profile->participant_code)
-            ->whereDate('tanggal', today())
-            ->first();
->>>>>>> origin/main
+            if (strtolower((string) $user?->role) === 'pembimbing') {
+                $assignedUserIds = Pendaftaran::query()
+                    ->where('pembimbing_id', $user->id)
+                    ->where('status', 'Pemagang Aktif')
+                    ->select('user_id');
+                $query->whereIn('user_id', $assignedUserIds);
+            }
+
+            $attendance = $query->first();
+        }
 
         return response()->json($attendance);
     }
@@ -91,22 +97,21 @@ class AbsensiController extends Controller
     {
         $user = $request->user();
 
-        if (! $user || ! in_array($user->role, ['peserta', 'user'], true)) {
+        if (! $user || ! in_array(strtolower((string) $user->role), ['peserta', 'pemagang', 'user', 'calon pemagang'], true)) {
             return response()->json([
                 'message' => 'Hanya akun peserta yang dapat melihat riwayat pribadinya.',
             ], 403);
         }
 
-<<<<<<< HEAD
-        $attendance = Absensi::where('user_id', $user->id)
-=======
         $profile = $this->participantProfile($request);
         if ($profile instanceof JsonResponse) {
             return $profile;
         }
 
-        $attendance = Absensi::where('participant_code', $profile->participant_code)
->>>>>>> origin/main
+        $attendance = Absensi::where(function ($query) use ($user, $profile) {
+            $query->where('user_id', $user->id)
+                ->orWhere('participant_code', $profile['participant_code']);
+        })
             ->orderByDesc('tanggal')
             ->get();
 
@@ -117,48 +122,27 @@ class AbsensiController extends Controller
     {
         $user = $request->user();
         $validated = $request->validate([
-<<<<<<< HEAD
-            'status' => ['nullable', 'in:Hadir,Izin,Sakit,Alpa'],
-=======
-            'status' => ['nullable', 'in:Hadir,Tidak Hadir,Izin,Sakit,Alpa'],
->>>>>>> origin/main
+            'status' => ['nullable', 'in:Hadir,Tidak Hadir,Izin,Sakit'],
             'keterangan' => ['nullable', 'string', 'max:255'],
             'foto' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ]);
 
-<<<<<<< HEAD
-        $registration = $user->pendaftarans()->where('status', 'Pemagang Aktif')->latest('id')->first();
-        if (! $registration) {
-            return response()->json(['message' => 'Akun ini belum memiliki pendaftaran magang aktif.'], 403);
-        }
-
-        // Identitas absensi peserta diambil dari sesi login dan pendaftaran aktif,
-        // bukan dari kode/nama yang dikirim browser.
-        $participantCode = 'USER-' . $user->id;
-        $participantName = $user->name;
-        $institution = $registration->asal_instansi;
-
-        $status = $validated['status'] ?? 'Hadir';
-
-        $photoPath = $request->hasFile('foto')
-            ? $request->file('foto')->store('absensi', 'public')
-            : null;
-
-        $attendance = Absensi::firstOrCreate(
-            [
-                'participant_code' => $participantCode,
-=======
         $profile = $this->participantProfile($request);
         if ($profile instanceof JsonResponse) {
             return $profile;
         }
 
         $status = $validated['status'] ?? 'Hadir';
-        $isLeaveRequest = $status === 'Izin';
-        $isNotPresent = in_array($status, ['Tidak Hadir', 'Izin', 'Sakit', 'Alpa']);
+        if ($status === 'Hadir' && now()->format('H:i') < '08:00') {
+            return response()->json([
+                'message' => 'Belum waktunya absen masuk. Absensi masuk hanya bisa dilakukan mulai jam 08:00.',
+            ], 422);
+        }
 
-        $user = $request->user();
-        $pembimbingId = $profile->pembimbing_id ?? $user->pembimbing_id;
+        $isLeaveRequest = $status === 'Izin';
+        $isNotPresent = in_array($status, ['Tidak Hadir', 'Izin', 'Sakit']);
+
+        $pembimbingId = $profile['pembimbing_id'] ?? null;
 
         $photoPath = $request->file('foto')?->store('absensi', 'public');
 
@@ -166,26 +150,18 @@ class AbsensiController extends Controller
 
         $attendance = Absensi::firstOrCreate(
             [
-                'participant_code' => $profile->participant_code,
->>>>>>> origin/main
+                'participant_code' => $profile['participant_code'],
                 'tanggal' => today(),
             ],
             [
                 'user_id' => $user->id,
-<<<<<<< HEAD
-                'participant_name' => $participantName,
-                'institution' => $institution,
-                'jam_masuk' => now()->format('H:i:s'),
-                'status' => $status,
-=======
-                'magang_id' => $profile->id,
+                'magang_id' => $profile['magang_id'],
                 'pembimbing_id' => $pembimbingId,
-                'participant_name' => $profile->participant_name,
-                'institution' => $profile->institution,
+                'participant_name' => $profile['participant_name'],
+                'institution' => $profile['institution'],
                 'jam_masuk' => $isNotPresent ? null : now()->format('H:i:s'),
                 'status' => $finalStatus,
                 'approval_status' => $isLeaveRequest ? 'pending' : null,
->>>>>>> origin/main
                 'keterangan' => $validated['keterangan'] ?? null,
                 'foto' => $photoPath,
             ]
@@ -219,6 +195,16 @@ class AbsensiController extends Controller
 
         $attendance = Absensi::findOrFail($id);
 
+        if (strtolower((string) $request->user()?->role) === 'pembimbing'
+            && ! Pendaftaran::where('user_id', $attendance->user_id)
+                ->where('pembimbing_id', $request->user()->id)
+                ->where('status', 'Pemagang Aktif')
+                ->exists()) {
+            return response()->json([
+                'message' => 'Anda hanya dapat memproses izin peserta bimbingan yang aktif.',
+            ], 403);
+        }
+
         if ($attendance->approval_status !== 'pending') {
             return response()->json([
                 'message' => 'Permohonan izin ini sudah diputuskan atau tidak menunggu persetujuan.',
@@ -241,33 +227,51 @@ class AbsensiController extends Controller
 
     public function checkOut(Request $request): JsonResponse
     {
-<<<<<<< HEAD
         $user = $request->user();
-        $attendance = Absensi::where('user_id', $user->id)
-=======
         $profile = $this->participantProfile($request);
         if ($profile instanceof JsonResponse) {
             return $profile;
         }
 
-        $attendance = Absensi::where('participant_code', $profile->participant_code)
->>>>>>> origin/main
+        $checkoutTime = $profile['schedule_pembimbing_id']
+            ? AttendanceSchedule::where('pembimbing_id', $profile['schedule_pembimbing_id'])->value('jam_pulang')
+            : null;
+        $checkoutTime = substr((string) ($checkoutTime ?: '17:00'), 0, 5);
+
+        if (now()->format('H:i') < $checkoutTime) {
+            return response()->json(['message' => "Belum waktunya pulang. Absensi pulang hanya bisa dilakukan mulai jam {$checkoutTime}."], 422);
+        }
+
+        $attendance = Absensi::where(function ($query) use ($user, $profile) {
+            $query->where('user_id', $user->id)
+                ->orWhere('participant_code', $profile['participant_code']);
+        })
             ->whereDate('tanggal', today())
             ->first();
 
-        if (! $attendance) {
-            return response()->json(['message' => 'Lakukan absensi masuk terlebih dahulu.'], 422);
-        }
-
-        if ($attendance->jam_pulang) {
+        if ($attendance && $attendance->jam_pulang) {
             return response()->json(['message' => 'Kamu sudah melakukan absensi pulang hari ini.', 'data' => $attendance], 422);
         }
 
-        if (now()->format('H:i') < '17:00') {
-            return response()->json(['message' => 'Belum waktunya pulang. Absensi pulang hanya bisa dilakukan mulai jam 17:00.'], 422);
+        if (! $attendance) {
+            $attendance = Absensi::create([
+                'user_id' => $user->id,
+                'magang_id' => $profile['magang_id'],
+                'pembimbing_id' => $profile['pembimbing_id'] ?? null,
+                'participant_code' => $profile['participant_code'],
+                'participant_name' => $profile['participant_name'],
+                'institution' => $profile['institution'],
+                'tanggal' => today(),
+                'jam_masuk' => null,
+                'jam_pulang' => now()->format('H:i:s'),
+                'status' => 'Hadir',
+            ]);
+        } else {
+            $attendance->update([
+                'jam_pulang' => now()->format('H:i:s'),
+                'status' => in_array($attendance->status, ['Belum hadir', null, ''], true) ? 'Hadir' : $attendance->status,
+            ]);
         }
-
-        $attendance->update(['jam_pulang' => now()->format('H:i:s')]);
 
         return response()->json(['message' => 'Absensi pulang berhasil dicatat.', 'data' => $attendance]);
     }
@@ -339,9 +343,6 @@ class AbsensiController extends Controller
 
         return response()->json(['message' => 'Data absensi berhasil diperbarui.', 'data' => $attendance]);
     }
-<<<<<<< HEAD
-=======
-
     public function store(Request $request): JsonResponse
     {
         if (! in_array($request->user()?->role, ['admin', 'pembimbing'], true)) {
@@ -379,14 +380,29 @@ class AbsensiController extends Controller
         return response()->json(['message' => 'Data absensi berhasil dihapus.']);
     }
 
-    private function participantProfile(Request $request): Magang|JsonResponse
+    private function participantProfile(Request $request): array|JsonResponse
     {
         $user = $request->user();
 
-        if (! $user || ! in_array($user->role, ['peserta', 'user'], true)) {
+        if (! $user || ! in_array(strtolower((string) $user->role), ['peserta', 'pemagang', 'user', 'calon pemagang'], true)) {
             return response()->json([
                 'message' => 'Absensi pribadi hanya tersedia untuk akun peserta.',
             ], 403);
+        }
+
+        $registration = $user->pendaftarans()
+            ->where('status', 'Pemagang Aktif')
+            ->latest('id')
+            ->first();
+        if ($registration) {
+            return [
+                'participant_code' => 'USER-' . $user->id,
+                'participant_name' => $user->name,
+                'institution' => $registration->asal_instansi,
+                'magang_id' => $user->magang?->id,
+                'pembimbing_id' => null,
+                'schedule_pembimbing_id' => $registration->pembimbing_id,
+            ];
         }
 
         $profile = $user->magang;
@@ -396,7 +412,129 @@ class AbsensiController extends Controller
             ], 403);
         }
 
-        return $profile;
+        $legacyPembimbingId = $profile->pembimbing_id ?? $user->pembimbing_id;
+        $pembimbingEmail = $legacyPembimbingId
+            ? Pembimbing::find($legacyPembimbingId)?->email
+            : null;
+        $schedulePembimbingId = $pembimbingEmail
+            ? User::where('email', $pembimbingEmail)->where('role', 'pembimbing')->value('id')
+            : null;
+
+        return [
+            'participant_code' => $profile->participant_code,
+            'participant_name' => $profile->participant_name,
+            'institution' => $profile->institution,
+            'magang_id' => $profile->id,
+            'pembimbing_id' => $legacyPembimbingId,
+            'schedule_pembimbing_id' => $schedulePembimbingId,
+        ];
     }
->>>>>>> origin/main
+
+    private function autoMarkAbsentForUserIfDayEnded(User $user, array $profile): void
+    {
+        $checkoutTime = $profile['schedule_pembimbing_id']
+            ? AttendanceSchedule::where('pembimbing_id', $profile['schedule_pembimbing_id'])->value('jam_pulang')
+            : null;
+        $checkoutTime = substr((string) ($checkoutTime ?: '17:00'), 0, 5);
+
+        // Jika waktu sekarang sudah melewati jam pulang (artinya seharian tidak masuk dan tidak ada kabar)
+        if (now()->format('H:i') >= $checkoutTime) {
+            $exists = Absensi::where(function ($query) use ($user, $profile) {
+                $query->where('user_id', $user->id)
+                    ->orWhere('participant_code', $profile['participant_code']);
+            })
+                ->whereDate('tanggal', today())
+                ->exists();
+
+            if (! $exists) {
+                Absensi::create([
+                    'user_id' => $user->id,
+                    'magang_id' => $profile['magang_id'],
+                    'pembimbing_id' => $profile['pembimbing_id'] ?? null,
+                    'participant_code' => $profile['participant_code'],
+                    'participant_name' => $profile['participant_name'],
+                    'institution' => $profile['institution'],
+                    'tanggal' => today(),
+                    'jam_masuk' => null,
+                    'jam_pulang' => null,
+                    'status' => 'Alpa',
+                    'keterangan' => 'Tidak hadir dan tidak ada keterangan seharian.',
+                ]);
+            }
+        }
+    }
+
+    private function autoMarkAbsentAllIfDayEnded(): void
+    {
+        $activeUsers = User::query()
+            ->whereIn('role', ['peserta', 'pemagang', 'user', 'calon pemagang'])
+            ->where(function ($query) {
+                $query->whereHas('pendaftarans', fn ($r) => $r->where('status', 'Pemagang Aktif'))
+                    ->orWhereHas('magang', fn ($m) => $m->where('status', 'Aktif'));
+            })
+            ->with([
+                'magang',
+                'pendaftarans' => fn ($r) => $r->where('status', 'Pemagang Aktif')->latest('id'),
+            ])
+            ->get();
+
+        foreach ($activeUsers as $user) {
+            $registration = $user->pendaftarans->first();
+            $magang = $user->magang;
+
+            $schedulePembimbingId = null;
+            $legacyPembimbingId = null;
+            if ($registration) {
+                $participantCode = 'USER-'.$user->id;
+                $participantName = $user->name;
+                $institution = $registration->asal_instansi;
+                $magangId = $magang?->id;
+                $schedulePembimbingId = $registration->pembimbing_id;
+            } elseif ($magang?->status === 'Aktif') {
+                $participantCode = $magang->participant_code;
+                $participantName = $magang->participant_name;
+                $institution = $magang->institution;
+                $magangId = $magang->id;
+                $legacyPembimbingId = $magang->pembimbing_id ?? $user->pembimbing_id;
+                $pembimbingEmail = $legacyPembimbingId
+                    ? Pembimbing::find($legacyPembimbingId)?->email
+                    : null;
+                $schedulePembimbingId = $pembimbingEmail
+                    ? User::where('email', $pembimbingEmail)->where('role', 'pembimbing')->value('id')
+                    : null;
+            } else {
+                continue;
+            }
+
+            $checkoutTime = $schedulePembimbingId
+                ? AttendanceSchedule::where('pembimbing_id', $schedulePembimbingId)->value('jam_pulang')
+                : null;
+            $checkoutTime = substr((string) ($checkoutTime ?: '17:00'), 0, 5);
+
+            if (now()->format('H:i') >= $checkoutTime) {
+                $exists = Absensi::where(function ($query) use ($user, $participantCode) {
+                    $query->where('user_id', $user->id)
+                        ->orWhere('participant_code', $participantCode);
+                })
+                    ->whereDate('tanggal', today())
+                    ->exists();
+
+                if (! $exists) {
+                    Absensi::create([
+                        'user_id' => $user->id,
+                        'magang_id' => $magangId,
+                        'pembimbing_id' => $legacyPembimbingId,
+                        'participant_code' => $participantCode,
+                        'participant_name' => $participantName,
+                        'institution' => $institution,
+                        'tanggal' => today(),
+                        'jam_masuk' => null,
+                        'jam_pulang' => null,
+                        'status' => 'Alpa',
+                        'keterangan' => 'Tidak hadir dan tidak ada keterangan seharian.',
+                    ]);
+                }
+            }
+        }
+    }
 }
