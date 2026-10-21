@@ -78,8 +78,16 @@ class LaporanMagangController extends Controller
         $validator = Validator::make($request->all(), [
             'judul_laporan' => 'required|string|max:255',
             'kategori_laporan' => 'required|in:Individu,Kelompok',
-            'abstrak' => 'nullable|string',
-            'file_laporan_pdf' => 'required|file|mimes:pdf|max:25600',
+            'link_google_doc' => [
+                'required',
+                'url',
+                'max:255',
+                function ($attribute, $value, $fail) {
+                    if (strtolower((string) parse_url($value, PHP_URL_HOST)) !== 'docs.google.com') {
+                        $fail('Link laporan harus berasal dari docs.google.com.');
+                    }
+                },
+            ],
         ]);
 
         if ($validator->fails()) {
@@ -101,14 +109,12 @@ class LaporanMagangController extends Controller
             ], 403);
         }
 
-        $filePath = $request->file('file_laporan_pdf')->store('laporan', 'public');
-
         $laporan = LaporanMagang::create([
             'id_peserta' => $request->user()->id,
             'judul_laporan' => $request->judul_laporan,
             'kategori_laporan' => $request->kategori_laporan,
-            'abstrak' => $request->abstrak,
-            'file_laporan_pdf' => $filePath,
+            'file_laporan_pdf' => $request->link_google_doc,
+            'link_google_doc' => $request->link_google_doc,
             'tgl_submit' => now(),
             'status_laporan' => 'Menunggu Review',
         ]);
@@ -148,6 +154,10 @@ class LaporanMagangController extends Controller
                 'success' => false,
                 'message' => 'File laporan tidak ditemukan'
             ], 404);
+        }
+
+        if ($laporan->link_google_doc) {
+            return redirect()->away($laporan->link_google_doc);
         }
 
         $fileStream = Storage::disk('public')->readStream($laporan->file_laporan_pdf);

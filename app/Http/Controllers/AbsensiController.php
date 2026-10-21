@@ -120,7 +120,6 @@ class AbsensiController extends Controller
             ? ($isLeaveRequest ? 'Tidak Hadir' : $status)
             : 'Hadir';
         $pembimbingId = $profile['pembimbing_id'] ?? $user->pembimbing_id;
-
         $userLat = isset($validated['latitude']) ? (float) $validated['latitude'] : null;
         $userLng = isset($validated['longitude']) ? (float) $validated['longitude'] : null;
         $geofenceDistance = null;

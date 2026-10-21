@@ -20,6 +20,7 @@ class Pendaftaran extends Model
         'tanggal_selesai',
         'file_surat_balasan',
         'surat_balasan_diterima_at',
+        'penilaian_akhir_pdf',
     ];
 
     public function user()

@@ -18,6 +18,7 @@ class LaporanMagang extends Model
         'kategori_laporan',
         'abstrak',
         'file_laporan_pdf',
+        'link_google_doc',
         'tgl_submit',
         'status_laporan',
         'catatan_revisi',

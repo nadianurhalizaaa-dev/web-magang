@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Absensi;
 use App\Models\LaporanMagang;
 use App\Models\Pendaftaran;
+use App\Models\Penilaian;
 use App\Models\SubmisiTugas;
 use App\Models\Tugas;
 use Carbon\Carbon;
@@ -73,11 +74,6 @@ class RekapitulasiController extends Controller
                 ->get();
             $latestSubmissions = $submissions->groupBy('tugas_id')->map(fn ($items) => $items->last())->values();
             $submittedTaskCount = $latestSubmissions->pluck('tugas_id')->filter()->unique()->count();
-            $submittedTaskTitles = $latestSubmissions->pluck('tugas.judul')
-                ->filter()
-                ->unique()
-                ->values();
-            $submissionDates = $latestSubmissions->pluck('tanggal_submit')->filter();
             $taskDetails = $latestSubmissions->map(fn (SubmisiTugas $submission) => [
                 'submisi_id' => $submission->id,
                 'tugas_id' => $submission->tugas_id,
@@ -91,13 +87,22 @@ class RekapitulasiController extends Controller
                 'ada_berkas' => filled($submission->file_path),
             ])->values();
 
-            $reports = LaporanMagang::with(['penilaian' => fn ($query) => $query
-                ->select('id_penilaian', 'id_laporan_magang', 'judul_nilai', 'catatan', 'tanggal_nilai', 'poin_nilai')
-                ->orderByDesc('id_penilaian')])
-                ->where('id_peserta', $user->id)
-                ->orderByDesc('tgl_submit')
-                ->get(['id_laporan', 'judul_laporan', 'kategori_laporan', 'status_laporan', 'tgl_submit', 'nilai_laporan']);
-            $latestReport = $reports->first();
+            $latestReport = LaporanMagang::where('id_peserta', $user->id)
+                ->orderByDesc('id_laporan')
+                ->first(['id_laporan', 'nilai_laporan']);
+            $assessment = Penilaian::with('laporan:id_laporan,id_peserta,nilai_laporan')
+                ->where(function ($query) use ($user, $latestReport) {
+                    $query->where('id_peserta', $user->id);
+                    if ($latestReport) {
+                        $query->orWhere('id_laporan_magang', $latestReport->id_laporan);
+                    }
+                })
+                ->orderByDesc('tanggal_nilai')
+                ->orderByDesc('id_penilaian')
+                ->first();
+            $assessmentScore = $assessment?->nilai_akhir
+                ?? $assessment?->laporan?->nilai_laporan
+                ?? $latestReport?->nilai_laporan;
 
             return [
                 'user_id' => $user->id,
@@ -107,10 +112,9 @@ class RekapitulasiController extends Controller
                 'periode' => $period?->nama_periode,
                 'tanggal_mulai' => $period?->tanggal_mulai ?? $registration->tanggal_daftar,
                 'tanggal_selesai' => $endValue,
-                'projek' => $submittedTaskTitles->isNotEmpty() ? $submittedTaskTitles->implode(', ') : 'Belum ada tugas yang dikumpulkan',
                 'detail_tugas' => $taskDetails,
-                'lampiran_tanggal_mulai' => $submissionDates->first()?->toDateString(),
-                'lampiran_tanggal_akhir' => $submissionDates->last()?->toDateString(),
+                'nilai_akhir_penilaian' => $assessmentScore,
+                'predikat_penilaian' => $assessment?->poin_nilai,
                 'hari_kerja' => $workingDays,
                 'hari_hadir' => $presentDays,
                 'hari_absensi_tercatat' => $recordedDays,
@@ -123,8 +127,6 @@ class RekapitulasiController extends Controller
                         : ($presentDays > 0 ? 'Kehadiran sebagian' : 'Belum ada hari hadir')),
                 'tugas_selesai' => min($submittedTaskCount, $totalTasks),
                 'total_tugas' => $totalTasks,
-                'laporan_terakhir' => $latestReport,
-                'daftar_laporan' => $reports,
             ];
         });
 
