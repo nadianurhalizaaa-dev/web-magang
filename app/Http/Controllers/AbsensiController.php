@@ -126,6 +126,8 @@ class AbsensiController extends Controller
             return $profile;
         }
 
+        $this->autoMarkAbsentForUserIfDayEnded($user, $profile);
+
         $attendance = Absensi::where(function ($query) use ($user, $profile) {
             $query->where('user_id', $user->id)
                 ->orWhere('participant_code', $profile['participant_code']);
@@ -569,6 +571,33 @@ class AbsensiController extends Controller
         ];
     }
 
+    private function createAbsentRecordIfNotExists(User $user, array $profile, $date, string $reason): void
+    {
+        $participantCode = $profile['participant_code'];
+        $exists = Absensi::where(function ($query) use ($user, $participantCode) {
+            $query->where('user_id', $user->id)
+                ->orWhere('participant_code', $participantCode);
+        })
+            ->whereDate('tanggal', $date)
+            ->exists();
+
+        if (! $exists) {
+            Absensi::create([
+                'user_id' => $user->id,
+                'magang_id' => $profile['magang_id'] ?? null,
+                'pembimbing_id' => $profile['pembimbing_id'] ?? null,
+                'participant_code' => $participantCode,
+                'participant_name' => $profile['participant_name'],
+                'institution' => $profile['institution'],
+                'tanggal' => $date,
+                'jam_masuk' => null,
+                'jam_pulang' => null,
+                'status' => 'Alpa',
+                'keterangan' => $reason,
+            ]);
+        }
+    }
+
     private function autoMarkAbsentForUserIfDayEnded(User $user, array $profile): void
     {
         $checkoutTime = $profile['schedule_pembimbing_id']
@@ -576,30 +605,32 @@ class AbsensiController extends Controller
             : null;
         $checkoutTime = substr((string) ($checkoutTime ?: '17:00'), 0, 5);
 
-        // Jika waktu sekarang sudah melewati jam pulang (artinya seharian tidak masuk dan tidak ada kabar)
+        // 1. Hari ini: jika sudah melewati jam pulang dan belum melakukan absensi masuk
         if (now()->format('H:i') >= $checkoutTime) {
-            $exists = Absensi::where(function ($query) use ($user, $profile) {
-                $query->where('user_id', $user->id)
-                    ->orWhere('participant_code', $profile['participant_code']);
-            })
-                ->whereDate('tanggal', today())
-                ->exists();
+            $this->createAbsentRecordIfNotExists($user, $profile, today(), 'Tidak hadir dan tidak ada keterangan seharian.');
+        }
 
-            if (! $exists) {
-                Absensi::create([
-                    'user_id' => $user->id,
-                    'magang_id' => $profile['magang_id'],
-                    'pembimbing_id' => $profile['pembimbing_id'] ?? null,
-                    'participant_code' => $profile['participant_code'],
-                    'participant_name' => $profile['participant_name'],
-                    'institution' => $profile['institution'],
-                    'tanggal' => today(),
-                    'jam_masuk' => null,
-                    'jam_pulang' => null,
-                    'status' => 'Alpa',
-                    'keterangan' => 'Tidak hadir dan tidak ada keterangan seharian.',
-                ]);
+        // 2. Hari-hari kerja sebelumnya yang terlewat tanpa absensi (otomatis Alpa)
+        $registration = $user->pendaftarans()->where('status', 'Pemagang Aktif')->latest('id')->first();
+        if ($registration && $registration->tanggal_daftar) {
+            $startDate = \Carbon\Carbon::parse($registration->tanggal_daftar)->startOfDay();
+        } elseif ($user->magang?->created_at) {
+            $startDate = \Carbon\Carbon::parse($user->magang->created_at)->startOfDay();
+        } else {
+            $startDate = today()->subDays(14)->startOfDay();
+        }
+
+        $limitDate = today()->subDays(30)->startOfDay();
+        if ($startDate->lt($limitDate)) {
+            $startDate = $limitDate;
+        }
+
+        $cursor = $startDate->copy();
+        while ($cursor->lt(today())) {
+            if (! $cursor->isWeekend()) {
+                $this->createAbsentRecordIfNotExists($user, $profile, $cursor->copy(), 'Tidak hadir dan tidak ada keterangan seharian.');
             }
+            $cursor->addDay();
         }
     }
 
@@ -645,35 +676,16 @@ class AbsensiController extends Controller
                 continue;
             }
 
-            $checkoutTime = $schedulePembimbingId
-                ? AttendanceSchedule::where('pembimbing_id', $schedulePembimbingId)->value('jam_pulang')
-                : null;
-            $checkoutTime = substr((string) ($checkoutTime ?: '17:00'), 0, 5);
+            $profile = [
+                'participant_code' => $participantCode,
+                'participant_name' => $participantName,
+                'institution' => $institution,
+                'magang_id' => $magangId,
+                'pembimbing_id' => $legacyPembimbingId,
+                'schedule_pembimbing_id' => $schedulePembimbingId,
+            ];
 
-            if (now()->format('H:i') >= $checkoutTime) {
-                $exists = Absensi::where(function ($query) use ($user, $participantCode) {
-                    $query->where('user_id', $user->id)
-                        ->orWhere('participant_code', $participantCode);
-                })
-                    ->whereDate('tanggal', today())
-                    ->exists();
-
-                if (! $exists) {
-                    Absensi::create([
-                        'user_id' => $user->id,
-                        'magang_id' => $magangId,
-                        'pembimbing_id' => $legacyPembimbingId,
-                        'participant_code' => $participantCode,
-                        'participant_name' => $participantName,
-                        'institution' => $institution,
-                        'tanggal' => today(),
-                        'jam_masuk' => null,
-                        'jam_pulang' => null,
-                        'status' => 'Alpa',
-                        'keterangan' => 'Tidak hadir dan tidak ada keterangan seharian.',
-                    ]);
-                }
-            }
+            $this->autoMarkAbsentForUserIfDayEnded($user, $profile);
         }
     }
 }

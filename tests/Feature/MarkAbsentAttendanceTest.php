@@ -173,4 +173,38 @@ class MarkAbsentAttendanceTest extends TestCase
             'keterangan' => 'Tidak hadir dan tidak ada keterangan seharian.',
         ]);
     }
+
+    public function test_participant_missed_past_day_is_automatically_marked_as_alpa_in_history(): void
+    {
+        // Misalkan tanggal pendaftaran dimulai 2 hari lalu pada hari kerja
+        $this->travelTo(now()->startOfWeek()->addDays(2)->setTime(9, 0)); // Hari Rabu
+
+        $participant = User::factory()->create(['role' => 'peserta']);
+        Pendaftaran::create([
+            'user_id' => $participant->id,
+            'asal_instansi' => 'Sekolah Test',
+            'file_surat_pengantar' => 'surat_pengantar/test.pdf',
+            'status' => 'Pemagang Aktif',
+            'tanggal_daftar' => today()->subDays(2), // Hari Senin
+            'file_surat_balasan' => 'storage/surat_balasan/test.pdf',
+            'surat_balasan_diterima_at' => now()->subDays(2),
+        ]);
+
+        // Peserta membuka riwayat absensi
+        $response = $this->actingAs($participant, 'sanctum')
+            ->getJson('/api/absensi-saya')
+            ->assertOk();
+
+        // Hari Senin dan Selasa otomatis tercatat sebagai Alpa
+        $this->assertDatabaseHas('absensis', [
+            'user_id' => $participant->id,
+            'tanggal' => today()->subDays(2)->format('Y-m-d 00:00:00'),
+            'status' => 'Alpa',
+        ]);
+        $this->assertDatabaseHas('absensis', [
+            'user_id' => $participant->id,
+            'tanggal' => today()->subDays(1)->format('Y-m-d 00:00:00'),
+            'status' => 'Alpa',
+        ]);
+    }
 }
