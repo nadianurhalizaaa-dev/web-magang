@@ -4,25 +4,179 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\LaporanMagang;
+use App\Models\Pendaftaran;
 use App\Models\Penilaian;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 
 class PenilaianController extends Controller
 {
+    private const RUBRIC = [
+        'ketertiban_awal' => ['aspek' => 'Ketertiban Proses Magang', 'bobot' => 10],
+        'kelengkapan_laporan' => ['aspek' => 'Kelengkapan Sistematika Laporan', 'bobot' => 50],
+        'kerapian_dokumentasi' => ['aspek' => 'Kerapian Catatan Dokumentasi Kegiatan Magang', 'bobot' => 20],
+        'analisis_penugasan' => ['aspek' => 'Analisis Hasil Penugasan', 'bobot' => 10],
+        'ketertiban_akhir' => ['aspek' => 'Ketertiban Proses Magang', 'bobot' => 10],
+    ];
+
+    public function participants(Request $request)
+    {
+        $registrations = Pendaftaran::with(['user:id,name,email'])
+            ->where('status', 'Pemagang Aktif')
+            ->when(
+                strtolower((string) $request->user()->role) === 'pembimbing',
+                fn ($query) => $query->where('pembimbing_id', $request->user()->id)
+            )
+            ->orderByDesc('id')
+            ->get()
+            ->filter(fn (Pendaftaran $registration) => $registration->user !== null)
+            ->unique('user_id')
+            ->values();
+
+        $participants = $registrations->map(function (Pendaftaran $registration) {
+            $report = LaporanMagang::with(['penilaian' => fn ($query) => $query->orderByDesc('id_penilaian')])
+                ->where('id_peserta', $registration->user_id)
+                ->orderByDesc('id_laporan')
+                ->first();
+            $latestEvaluation = $report?->penilaian->first();
+
+            return [
+                'user_id' => $registration->user_id,
+                'nama_peserta' => $registration->user->name,
+                'email' => $registration->user->email,
+                'asal_instansi' => $registration->asal_instansi,
+                'has_penilaian_akhir_pdf' => filled($registration->penilaian_akhir_pdf),
+                'penilaian' => $this->latestParticipantEvaluation($registration->user_id, $report),
+                'laporan' => $report ? [
+                    'id_laporan' => $report->id_laporan,
+                    'judul_laporan' => $report->judul_laporan,
+                    'status_laporan' => $report->status_laporan,
+                    'nilai_laporan' => $report->nilai_laporan,
+                    'tanggal_dinilai' => $report->tanggal_dinilai,
+                    'penilaian' => $latestEvaluation,
+                ] : null,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $participants,
+        ]);
+    }
+
+    private function latestParticipantEvaluation(int $userId, ?LaporanMagang $report): ?Penilaian
+    {
+        $participantEvaluation = Penilaian::where('id_peserta', $userId)
+            ->whereNull('id_laporan_magang')
+            ->orderByDesc('id_penilaian')
+            ->first();
+        $reportEvaluation = $report?->penilaian->first();
+
+        if (! $participantEvaluation) {
+            return $reportEvaluation;
+        }
+
+        if (! $reportEvaluation) {
+            return $participantEvaluation;
+        }
+
+        return $participantEvaluation->tanggal_nilai?->greaterThan($reportEvaluation->tanggal_nilai)
+            ? $participantEvaluation
+            : $reportEvaluation;
+    }
+
+    public function uploadFinalAssessmentPdf(Request $request, int $userId)
+    {
+        $validator = Validator::make($request->all(), [
+            'file' => 'required|file|mimes:pdf|max:25600',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $registration = $this->assignedActiveRegistration($request, $userId);
+        if (! $registration) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pemagang aktif tidak ditemukan atau tidak ditugaskan kepada Anda.',
+            ], 404);
+        }
+
+        $oldPath = $registration->penilaian_akhir_pdf;
+        $newPath = $request->file('file')->store('penilaian_akhir', 'public');
+        $registration->penilaian_akhir_pdf = $newPath;
+        $registration->save();
+
+        if ($oldPath && $oldPath !== $newPath) {
+            Storage::disk('public')->delete($oldPath);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'PDF penilaian akhir berhasil diunggah.',
+            'data' => [
+                'user_id' => $userId,
+                'has_penilaian_akhir_pdf' => true,
+            ],
+        ]);
+    }
+
+    public function downloadFinalAssessmentPdf(Request $request, int $userId)
+    {
+        $registration = $this->assignedActiveRegistration($request, $userId);
+        if (! $registration || ! $registration->penilaian_akhir_pdf) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PDF penilaian akhir tidak ditemukan.',
+            ], 404);
+        }
+
+        $disk = Storage::disk('public');
+        if (! $disk->exists($registration->penilaian_akhir_pdf)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Berkas PDF penilaian akhir tidak ditemukan di penyimpanan.',
+            ], 404);
+        }
+
+        return $disk->download(
+            $registration->penilaian_akhir_pdf,
+            "penilaian-akhir-{$userId}.pdf"
+        );
+    }
+
+    private function assignedActiveRegistration(Request $request, int $userId): ?Pendaftaran
+    {
+        return Pendaftaran::where('user_id', $userId)
+            ->where('status', 'Pemagang Aktif')
+            ->when(
+                strtolower((string) $request->user()->role) === 'pembimbing',
+                fn ($query) => $query->where('pembimbing_id', $request->user()->id)
+            )
+            ->orderByDesc('id')
+            ->first();
+    }
+
     /**
      * UC-05: Penilaian Laporan (Pembimbing)
      */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'id_laporan_magang' => 'required|integer|exists:laporan_magang,id_laporan',
-            'id_pembimbing' => 'required|integer',
-            'judul_nilai' => 'nullable|string',
-            'catatan' => 'nullable|string',
-            'poin_nilai' => 'required|string',
-            'nilai_laporan' => 'required|numeric|between:0,100',
+            'id_peserta' => 'required|integer|exists:users,id',
+            'id_laporan_magang' => 'nullable|integer|exists:laporan_magang,id_laporan',
+            'rincian_nilai' => 'required|array|size:5',
+            'rincian_nilai.ketertiban_awal' => 'required|numeric|between:0,100',
+            'rincian_nilai.kelengkapan_laporan' => 'required|numeric|between:0,100',
+            'rincian_nilai.kerapian_dokumentasi' => 'required|numeric|between:0,100',
+            'rincian_nilai.analisis_penugasan' => 'required|numeric|between:0,100',
+            'rincian_nilai.ketertiban_akhir' => 'required|numeric|between:0,100',
         ]);
 
         if ($validator->fails()) {
@@ -32,21 +186,91 @@ class PenilaianController extends Controller
             ], 422);
         }
 
-        $penilaian = DB::transaction(function () use ($request) {
-            $penilaian = Penilaian::create([
-                'id_laporan_magang' => $request->id_laporan_magang,
-                'id_pembimbing' => $request->id_pembimbing,
-                'judul_nilai' => $request->judul_nilai ?? 'Penilaian Akhir Laporan Magang',
-                'catatan' => $request->catatan,
-                'tanggal_nilai' => now(),
-                'poin_nilai' => $request->poin_nilai,
-            ]);
+        $report = $request->filled('id_laporan_magang')
+            ? LaporanMagang::findOrFail($request->id_laporan_magang)
+            : null;
 
-            $laporan = LaporanMagang::findOrFail($request->id_laporan_magang);
-            $laporan->nilai_laporan = $request->nilai_laporan;
-            $laporan->tanggal_dinilai = now();
-            $laporan->status_laporan = 'Disetujui';
-            $laporan->save();
+        if ($report && (int) $report->id_peserta !== (int) $request->id_peserta) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Laporan tidak cocok dengan peserta yang dipilih.',
+            ], 422);
+        }
+
+        if (strtolower((string) $request->user()->role) === 'pembimbing') {
+            $isAssigned = Pendaftaran::where('user_id', $request->id_peserta)
+                ->where('pembimbing_id', $request->user()->id)
+                ->where('status', 'Pemagang Aktif')
+                ->exists();
+
+            if (! $isAssigned) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak ditugaskan untuk menilai laporan peserta ini.',
+                ], 403);
+            }
+        }
+
+        if ($report && $report->status_laporan !== 'Disetujui') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Laporan harus disetujui sebelum dapat dinilai.',
+            ], 422);
+        }
+
+        $rubric = [];
+        $total = 0;
+        foreach (self::RUBRIC as $key => $criteria) {
+            $score = (float) $request->input("rincian_nilai.{$key}");
+            $weightedScore = round($score * $criteria['bobot'] / 100, 2);
+            $rubric[$key] = [
+                'aspek' => $criteria['aspek'],
+                'nilai' => $score,
+                'bobot' => $criteria['bobot'],
+                'nilai_akhir' => $weightedScore,
+            ];
+            $total += $weightedScore;
+        }
+        $total = round($total, 2);
+        $predicate = match (true) {
+            $total >= 85 => 'A (Sangat Baik)',
+            $total >= 75 => 'B+ (Baik)',
+            $total >= 65 => 'B (Cukup Baik)',
+            $total >= 50 => 'C (Perlu Evaluasi)',
+            default => 'D (Kurang)',
+        };
+
+        $penilaian = DB::transaction(function () use ($request, $report, $rubric, $total, $predicate) {
+            $query = Penilaian::where('id_peserta', $request->id_peserta);
+            if ($report) {
+                $query->where('id_laporan_magang', $report->id_laporan);
+            } else {
+                $query->whereNull('id_laporan_magang');
+            }
+
+            $penilaian = $query->orderByDesc('id_penilaian')->first()
+                ?? new Penilaian([
+                    'id_peserta' => $request->id_peserta,
+                    'id_laporan_magang' => $report?->id_laporan,
+                ]);
+
+            $penilaian->fill([
+                'id_peserta' => $request->id_peserta,
+                'id_pembimbing' => $request->user()->id,
+                'judul_nilai' => 'Penilaian Akhir Laporan Magang',
+                'catatan' => null,
+                'tanggal_nilai' => now(),
+                'poin_nilai' => $predicate,
+                'rincian_nilai' => $rubric,
+                'nilai_akhir' => $total,
+            ]);
+            $penilaian->save();
+
+            if ($report) {
+                $report->nilai_laporan = $total;
+                $report->tanggal_dinilai = now();
+                $report->save();
+            }
 
             return $penilaian->load('laporan');
         });
@@ -55,7 +279,7 @@ class PenilaianController extends Controller
             'success' => true,
             'message' => 'Penilaian laporan berhasil disimpan',
             'data' => $penilaian
-        ], 201);
+        ]);
     }
 
     /**

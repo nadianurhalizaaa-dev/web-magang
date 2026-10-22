@@ -137,7 +137,10 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::post('/laporan-magang/{id}/review', [LaporanMagangController::class, 'review']);
         Route::delete('/laporan-magang/{id}', [LaporanMagangController::class, 'destroy']);
         Route::get('/penilaian', [PenilaianController::class, 'index']);
+        Route::get('/penilaian/peserta', [PenilaianController::class, 'participants']);
         Route::post('/penilaian', [PenilaianController::class, 'store']);
+        Route::post('/penilaian/peserta/{userId}/pdf', [PenilaianController::class, 'uploadFinalAssessmentPdf']);
+        Route::get('/penilaian/peserta/{userId}/pdf', [PenilaianController::class, 'downloadFinalAssessmentPdf']);
         Route::get('/rekapitulasi', [RekapitulasiController::class, 'index']);
     });
 });
