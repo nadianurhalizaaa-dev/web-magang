@@ -33,11 +33,28 @@ class AbsensiController extends Controller
         $query = Absensi::with(['pembimbing', 'user']);
 
         if (strtolower((string) $request->user()?->role) === 'pembimbing') {
+            $legacyPembimbingId = Pembimbing::where('email', $request->user()->email)->value('id');
+
             $assignedUserIds = Pendaftaran::query()
                 ->where('pembimbing_id', $request->user()->id)
                 ->where('status', 'Pemagang Aktif')
-                ->select('user_id');
-            $query->whereIn('user_id', $assignedUserIds);
+                ->pluck('user_id');
+
+            $assignedMagangIds = Magang::query()
+                ->when($legacyPembimbingId, fn ($q) => $q->where('pembimbing_id', $legacyPembimbingId))
+                ->pluck('id');
+
+            $assignedParticipantCodes = Magang::query()
+                ->when($legacyPembimbingId, fn ($q) => $q->where('pembimbing_id', $legacyPembimbingId))
+                ->pluck('participant_code');
+
+            $query->where(function ($q) use ($assignedUserIds, $assignedMagangIds, $assignedParticipantCodes, $request, $legacyPembimbingId) {
+                $q->whereIn('user_id', $assignedUserIds)
+                    ->orWhereIn('magang_id', $assignedMagangIds)
+                    ->orWhereIn('participant_code', $assignedParticipantCodes)
+                    ->orWhere('pembimbing_id', $request->user()->id)
+                    ->when($legacyPembimbingId, fn ($sub) => $sub->orWhere('pembimbing_id', $legacyPembimbingId));
+            });
         }
 
         if (! empty($validated['participant_code'])) {
@@ -220,14 +237,22 @@ class AbsensiController extends Controller
 
         $attendance = Absensi::findOrFail($id);
 
-        if (strtolower((string) $request->user()?->role) === 'pembimbing'
-            && ! Pendaftaran::where('user_id', $attendance->user_id)
+        if (strtolower((string) $request->user()?->role) === 'pembimbing') {
+            $legacyPembimbingId = Pembimbing::where('email', $request->user()->email)->value('id');
+            $isAssignedRegistration = $attendance->user_id && Pendaftaran::where('user_id', $attendance->user_id)
                 ->where('pembimbing_id', $request->user()->id)
                 ->where('status', 'Pemagang Aktif')
-                ->exists()) {
-            return response()->json([
-                'message' => 'Anda hanya dapat memproses izin peserta bimbingan yang aktif.',
-            ], 403);
+                ->exists();
+            $isDirectPembimbing = ($attendance->pembimbing_id && ($attendance->pembimbing_id === $request->user()->id || $attendance->pembimbing_id === $legacyPembimbingId));
+            $isMagangPembimbing = $attendance->magang_id && Magang::where('id', $attendance->magang_id)
+                ->when($legacyPembimbingId, fn ($q) => $q->where('pembimbing_id', $legacyPembimbingId))
+                ->exists();
+
+            if (! $isAssignedRegistration && ! $isDirectPembimbing && ! $isMagangPembimbing) {
+                return response()->json([
+                    'message' => 'Anda hanya dapat memproses izin peserta bimbingan yang aktif.',
+                ], 403);
+            }
         }
 
         if ($attendance->approval_status !== 'pending') {
