@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AktivitasController as ApiAktivitasController;
 use App\Http\Controllers\Api\AttendanceScheduleController;
 use App\Http\Controllers\Api\AuthController as ApiAuthController;
 use App\Http\Controllers\Api\BerandaController as ApiBerandaController;
+use App\Http\Controllers\Api\LandingPageManagementController;
 use App\Http\Controllers\Api\LaporanMagangController;
 use App\Http\Controllers\Api\LokasiAbsensiController;
 use App\Http\Controllers\Api\ParticipantAccountController;
@@ -53,6 +54,16 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::middleware('role:admin')->group(function () {
+        Route::get('/admin/landing-page', [LandingPageManagementController::class, 'index']);
+        Route::put('/admin/landing-page/profil', [LandingPageManagementController::class, 'updateProfil']);
+        Route::post('/admin/landing-page/alumni', [LandingPageManagementController::class, 'storeAlumni']);
+        Route::put('/admin/landing-page/alumni/{id}', [LandingPageManagementController::class, 'updateAlumni']);
+        Route::delete('/admin/landing-page/alumni/{id}', [LandingPageManagementController::class, 'destroyAlumni']);
+        Route::post('/admin/landing-page/aktivitas', [LandingPageManagementController::class, 'storeAktivitas']);
+        Route::put('/admin/landing-page/aktivitas/{id}', [LandingPageManagementController::class, 'updateAktivitas']);
+        Route::delete('/admin/landing-page/aktivitas/{id}', [LandingPageManagementController::class, 'destroyAktivitas']);
+        Route::patch('/admin/landing-page/komentar/{id}/status', [LandingPageManagementController::class, 'updateKomentarStatus']);
+        Route::delete('/admin/landing-page/komentar/{id}', [LandingPageManagementController::class, 'destroyKomentar']);
         Route::get('/admin/pembimbing', [ApiAuthController::class, 'getPembimbing']);
         Route::post('/admin/pembimbing', [ApiAuthController::class, 'createPembimbing']);
         Route::get('/users/peserta', [ParticipantAccountController::class, 'index']);

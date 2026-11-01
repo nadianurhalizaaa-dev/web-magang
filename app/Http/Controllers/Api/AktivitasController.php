@@ -20,8 +20,10 @@ class AktivitasController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        // Hanya tampilkan aktivitas dengan status 'active' di halaman publik
         $query = AktivitasMagang::with(['user:id,name,email'])
-            ->withCount('komentar');
+            ->withCount('komentar')
+            ->where('status', 'active');
 
         if ($request->has('search') && !empty($request->search)) {
             $search = $request->search;
@@ -58,7 +60,7 @@ class AktivitasController extends Controller
         $aktivitas = AktivitasMagang::with([
             'user:id,name,email',
             'komentar.user:id,name,email'
-        ])->find($id);
+        ])->where('status', 'active')->find($id);
 
         if (!$aktivitas) {
             return response()->json([
