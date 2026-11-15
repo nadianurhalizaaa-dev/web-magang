@@ -78,7 +78,7 @@ class LaporanMagangController extends Controller
         $validator = Validator::make($request->all(), [
             'judul_laporan' => 'required|string|max:255',
             'kategori_laporan' => 'required|in:Individu,Kelompok',
-            'file_laporan' => 'required|file|mimes:pdf|max:25600',
+            'link_google_doc' => 'required|url|max:255',
         ]);
 
         if ($validator->fails()) {
@@ -100,36 +100,19 @@ class LaporanMagangController extends Controller
             ], 403);
         }
 
-        $filePath = $request->file('file_laporan')->store(
-            "laporan/{$request->user()->id}",
-            'public'
-        );
-        if (! is_string($filePath) || $filePath === '') {
-            return response()->json([
-                'success' => false,
-                'message' => 'PDF laporan gagal disimpan.',
-            ], 500);
-        }
-
-        try {
-            $laporan = LaporanMagang::create([
-                'id_peserta' => $request->user()->id,
-                'judul_laporan' => $request->judul_laporan,
-                'kategori_laporan' => $request->kategori_laporan,
-                'file_laporan_pdf' => $filePath,
-                'link_google_doc' => null,
-                'tgl_submit' => now(),
-                'status_laporan' => 'Menunggu Review',
-            ]);
-        } catch (\Throwable $exception) {
-            Storage::disk('public')->delete($filePath);
-
-            throw $exception;
-        }
+        $laporan = LaporanMagang::create([
+            'id_peserta' => $request->user()->id,
+            'judul_laporan' => $request->judul_laporan,
+            'kategori_laporan' => $request->kategori_laporan,
+            'file_laporan_pdf' => null,
+            'link_google_doc' => $request->link_google_doc,
+            'tgl_submit' => now(),
+            'status_laporan' => 'Menunggu Review',
+        ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Laporan PDF berhasil diunggah',
+            'message' => 'Tautan laporan Google Docs berhasil disimpan',
             'data' => $laporan
         ], 201);
     }
@@ -190,7 +173,7 @@ class LaporanMagangController extends Controller
     public function review(Request $request, $id)
     {
         $validator = Validator::make($request->all(), [
-            'status_laporan' => 'required|in:Revisi,Disetujui',
+            'status_laporan' => 'required|in:Menunggu Review,Revisi,Disetujui',
             'catatan_revisi' => 'nullable|string',
         ]);
 
