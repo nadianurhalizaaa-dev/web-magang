@@ -136,8 +136,6 @@ class BerandaController extends Controller
         $user = $request->user();
 
         $validator = Validator::make($request->all(), [
-            'nama_pengguna' => 'nullable|string|max:255',
-            'email' => 'nullable|email|max:255',
             'rating' => 'required|integer|min:1|max:5',
             'komentar' => 'required|string',
         ]);
@@ -151,9 +149,9 @@ class BerandaController extends Controller
         }
 
         $komentar = KomentarAplikasi::create([
-            'user_id' => $user ? $user->id : null,
-            'nama_pengguna' => $request->nama_pengguna ?? ($user ? $user->name : 'Pengguna App'),
-            'email' => $request->email ?? ($user ? $user->email : null),
+            'user_id' => $user->id,
+            'nama_pengguna' => $user->name,
+            'email' => $user->email,
             'rating' => $request->rating,
             'komentar' => $request->komentar,
             'status' => 'published',

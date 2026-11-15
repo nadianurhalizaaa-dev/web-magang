@@ -35,7 +35,7 @@ Route::get('/beranda', [ApiBerandaController::class, 'index']);
 Route::get('/beranda/profil', [ApiBerandaController::class, 'getProfil']);
 Route::get('/beranda/alumni', [ApiBerandaController::class, 'getAlumni']);
 Route::get('/komentar', [ApiBerandaController::class, 'getKomentar']);
-Route::post('/komentar', [ApiBerandaController::class, 'storeKomentar']);
+Route::post('/komentar', [ApiBerandaController::class, 'storeKomentar'])->middleware('auth:sanctum');
 
 Route::get('/aktivitas', [ApiAktivitasController::class, 'index']);
 Route::get('/aktivitas/{id}', [ApiAktivitasController::class, 'show']);
