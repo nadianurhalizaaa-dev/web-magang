@@ -130,6 +130,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::get('/laporan-magang', [LaporanMagangController::class, 'index']);
         Route::get('/laporan-magang/{id}', [LaporanMagangController::class, 'show']);
         Route::get('/laporan-magang/{id}/download', [LaporanMagangController::class, 'download']);
+        Route::get('/laporan-magang/{id}/google-doc-pdf', [LaporanMagangController::class, 'downloadGoogleDocPdf']);
+        Route::post('/laporan-magang/{id}/final-pdf', [LaporanMagangController::class, 'saveFinalPdf'])->middleware('role:admin,pembimbing');
         Route::delete('/laporan-magang/{id}', [LaporanMagangController::class, 'destroy']);
         Route::get('/master-penilaian/aktif', [MasterPenilaianController::class, 'active']);
     });

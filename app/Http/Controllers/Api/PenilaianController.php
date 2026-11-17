@@ -217,7 +217,7 @@ class PenilaianController extends Controller
             }
         }
 
-        if ($report && $report->status_laporan !== 'Disetujui') {
+        if ($report && ! in_array($report->status_laporan, ['Disetujui', 'Selesai'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Laporan harus disetujui sebelum dapat dinilai.',
@@ -249,7 +249,8 @@ class PenilaianController extends Controller
             default => 'D (Kurang)',
         };
 
-        $penilaian = DB::transaction(function () use ($request, $report, $rubric, $total, $predicate) {
+        $oldFinalPdfPath = null;
+        $penilaian = DB::transaction(function () use ($request, $report, $rubric, $total, $predicate, &$oldFinalPdfPath) {
             $query = Penilaian::where('id_peserta', $request->id_peserta);
             if ($report) {
                 $query->where('id_laporan_magang', $report->id_laporan);
@@ -276,13 +277,20 @@ class PenilaianController extends Controller
             $penilaian->save();
 
             if ($report) {
+                $oldFinalPdfPath = $report->file_pdf_final;
+                $report->file_pdf_final = null;
                 $report->nilai_laporan = $total;
                 $report->tanggal_dinilai = now();
+                $report->status_laporan = 'Selesai';
                 $report->save();
             }
 
             return $penilaian->load('laporan');
         });
+
+        if ($oldFinalPdfPath) {
+            Storage::disk('public')->delete($oldFinalPdfPath);
+        }
 
         return response()->json([
             'success' => true,
